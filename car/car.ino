@@ -1,7 +1,8 @@
 //========================================================================
 //============================ MEAM 510 Final ============================
 //========================================================================
-//Author: Jiatong Sun, Xinyue Wei, Haojiong Lu
+//*****************************Team 04: BAT_V*****************************
+//**************Members: Jiatong Sun, Xinyue Wei, Haojiong Lu**************
 //========================================================================
 //============================ MEAM 510 Final ============================
 //========================================================================
@@ -28,9 +29,10 @@
 //========================================================================
 #define    CLOCKWISE               1  
 #define    COUNTERCLOCKWISE        -1  
-#define    LEDC_CHANNEL            0
 #define    LEDC_RESOLUTION_BITS    13
+#define    SERVO_LEDC_CHANNEL      0
 #define    SERVO_LEDC_FREQ_HZ      50 
+#define    MOTOR_LEDC_CHANNEL      1
 #define    MOTOR_LEDC_FREQ_HZ      1000    
 #define    ORIENT_MIN_ANGLE        900
 #define    ORIENT_MAX_ANGLE        1000
@@ -163,13 +165,14 @@ void pinSetup(){
 //=========================== PWM setup start ============================
 //========================================================================
 void PWMSetup(){
-    ledcSetup(LEDC_CHANNEL,SERVO_LEDC_FREQ_HZ,LEDC_RESOLUTION_BITS);
 //********************************* servo ********************************
-    ledcAttachPin(ORIENT_SERVO_PIN,LEDC_CHANNEL); 
-    ledcAttachPin(WEAPON_SERVO_PIN,LEDC_CHANNEL); 
+    ledcSetup(SERVO_LEDC_CHANNEL,SERVO_LEDC_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcAttachPin(ORIENT_SERVO_PIN,SERVO_LEDC_CHANNEL); 
+    ledcAttachPin(WEAPON_SERVO_PIN,SERVO_LEDC_CHANNEL); 
 //********************************* motor ********************************
-    ledcAttachPin(BACK_LEFT_EN_PIN,LEDC_CHANNEL); 
-    ledcAttachPin(BACK_RIGHT_EN_PIN,LEDC_CHANNEL);
+    ledcSetup(MOTOR_LEDC_CHANNEL,MOTOR_LEDC_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcAttachPin(BACK_LEFT_EN_PIN,MOTOR_LEDC_CHANNEL); 
+    ledcAttachPin(BACK_RIGHT_EN_PIN,MOTOR_LEDC_CHANNEL);
 }
 //========================================================================
 //============================ PWM setup end =============================
@@ -291,7 +294,7 @@ void ultraDectect(){
 //========================================================================
 void orientServoControl(){
     while(millis()%3==0){
-        ledcWrite(LEDC_CHANNEL,orient_pos);
+        ledcWrite(SERVO_LEDC_CHANNEL,orient_pos);
         orient_pos += orient_dir;
         if(orient_pos == ORIENT_MAX_ANGLE || orient_pos == ORIENT_MIN_ANGLE){
             orient_dir = -orient_dir;
@@ -311,7 +314,7 @@ void orientServoControl(){
 //========================================================================
 void weaponServoControl(){
     while(millis()%3==0){
-        ledcWrite(LEDC_CHANNEL,weapon_pos);
+        ledcWrite(SERVO_LEDC_CHANNEL,weapon_pos);
         weapon_pos += weapon_dir;
         if(weapon_pos == WEAPON_MAX_ANGLE || weapon_pos == WEAPON_MIN_ANGLE){
             weapon_dir = -weapon_dir;
