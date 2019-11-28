@@ -2,7 +2,7 @@
 //============================ MEAM 510 Final ============================
 //========================================================================
 //*****************************Team 04: BAT_V*****************************
-//**************Members: Jiatong Sun, Xinyue Wei, Haojiong Lu**************
+//**************Members: Jiatong Sun, Xinyue Wei, Haojiong Lu*************
 //========================================================================
 //============================ MEAM 510 Final ============================
 //========================================================================
@@ -18,7 +18,7 @@
 #include <WiFiUDP.h>
 //========================================================================
 //============================= library end ==============================
-//=======================99=================================================
+//========================================================================
 
 
 
@@ -26,9 +26,10 @@
 
 //========================================================================
 //====================== constant definition start =======================
-//=============================== =========================================
+//=============================== ========================================
 #define    CLOCKWISE               1  
 #define    COUNTERCLOCKWISE        -1  
+#define    STANDBY                 0
 #define    LEDC_RESOLUTION_BITS    8
 #define    LEDC_RESOLUTION         255
 //********************************* servo ********************************
@@ -44,6 +45,10 @@
 #define    BACK_LEFT_CHANNEL       2
 #define    BACK_RIGHT_CHANNEL      3
 #define    MOTOR_ZERO_SPEED        119
+//******************************** encoder *******************************
+#define    PERIOD_THRESH           10000
+#define    ERR_NUM_THRESH          180
+#define    PAUSE_THRESH            20000
 //========================================================================
 //======================= constant definition end ========================
 //========================================================================
@@ -63,9 +68,8 @@
 #define    WEAPON_SERVO_PIN        16
 //********************************* motor ********************************
 #define    BACK_LEFT_EN_PIN        32
-#define    BACK_LEFT_DIR_PIN       26
 #define    BACK_RIGHT_EN_PIN       27
-#define    BACK_RIGHT_DIR_PIN      14
+#define    BACK_DIR_PIN            26
 #define    BACK_STANDBY_PIN        21
 #define    FRONT_WHEEL_PIN         19
 //******************************** encoder *******************************
@@ -95,6 +99,7 @@ WiFiUDP udp;
 unsigned int UDPlocalPort = 2816, UDPtargetPort = 2918; 
 const int packetSize = 100; 
 byte receive_buffer[packetSize];
+int VRX = 0, VRY = 0, PTM = 0, SW_1 = 0, SW_2 = 0;
 //****************************** ultrosonic ******************************
 long distance = 0;
 long duration = 0;
@@ -105,14 +110,22 @@ int weapon_pos = WEAPON_MIN_ANGLE;
 int weapon_dir = CLOCKWISE;
 bool weapon_auto = false;
 //********************************* motor ********************************
-int back_left_speed = 0, back_right_speed = 0;
-bool back_dir = true;
+double back_left_speed = 0, back_right_speed = 0;
+int back_dir = 0;
 bool front_standby = true, back_standby = true;
 //******************************** encoder *******************************
 bool left_encoder_state = false, last_left_encoder_state = false;
 bool right_encoder_state = false, last_right_encoder_state = false;
 long left_start = 0, right_start = 0;
 long left_period = 0, right_period = 0;
+int  left_data_cnt = 0, right_data_cnt = 0;
+long left_data[360] = {0}, right_data[360] = {0};
+double left_rps = 0, right_rps = 0;
+long left_fall = 0, right_fall = 0;
+//********************************* PID **********************************
+double diff_rps = 0;
+double last_diff_rps = 0;
+double all_diff_rps = 0;
 //********************************* vive *********************************
 bool vive_state = false, last_vive_state = false;
 int sync_cnt = 0;
@@ -141,7 +154,8 @@ void loop(){
     WiFi_Reconnect();
     UDPreceiveData();
     backMotorControl();
-    encoderCalc();
+//    encoderCalc();
+//    pidControl();
 //    ultraDectect();
     show();
 //    orientServoControl();
@@ -162,8 +176,7 @@ void pinSetup(){
     pinMode(TRIGGER_PIN,OUTPUT);
     pinMode(ECHO_PIN,INPUT);
 //********************************* motor ********************************
-    pinMode(BACK_LEFT_DIR_PIN,OUTPUT);
-    pinMode(BACK_RIGHT_DIR_PIN,OUTPUT);
+    pinMode(BACK_DIR_PIN,OUTPUT);
     pinMode(BACK_STANDBY_PIN,OUTPUT);
     pinMode(FRONT_WHEEL_PIN,OUTPUT);
 //******************************** encoder *******************************
@@ -268,10 +281,26 @@ void UDPreceiveData(){
     {
         udp.read(receive_buffer, packetSize);
 
+        VRX = receive_buffer[0];
+        VRY = receive_buffer[1];
+        PTM = receive_buffer[2];
+        SW_1 = receive_buffer[3];
+        SW_2 = receive_buffer[4];
+
         back_left_speed = abs(receive_buffer[0] - MOTOR_ZERO_SPEED);
-        back_dir = receive_buffer[0] > MOTOR_ZERO_SPEED ? true : false;
-        if(back_dir)back_left_speed = map(back_left_speed,1,LEDC_RESOLUTION - MOTOR_ZERO_SPEED,0,LEDC_RESOLUTION);
-        else back_left_speed = map(back_left_speed,0,MOTOR_ZERO_SPEED - 1,0,LEDC_RESOLUTION);
+        if(receive_buffer[0] > MOTOR_ZERO_SPEED) {
+            back_dir = CLOCKWISE;
+            back_left_speed = map(back_left_speed,1,LEDC_RESOLUTION - MOTOR_ZERO_SPEED,0,LEDC_RESOLUTION);
+        }
+        else if(receive_buffer[0] < MOTOR_ZERO_SPEED) {
+            back_dir = COUNTERCLOCKWISE;
+            back_left_speed = map(back_left_speed,0,MOTOR_ZERO_SPEED - 1,0,LEDC_RESOLUTION);
+        }
+        else {
+            back_dir = STANDBY;
+            back_left_speed = 0;
+        }
+        back_right_speed = back_left_speed;
         
         orient_pos = receive_buffer[1];
         weapon_pos = receive_buffer[2];
@@ -357,15 +386,13 @@ void weaponServoControl(){
 //====================== back motor control start ========================
 //========================================================================
 void backMotorControl(){
-    if(back_dir) {
-        digitalWrite(BACK_LEFT_DIR_PIN,HIGH);
-        digitalWrite(BACK_RIGHT_DIR_PIN,HIGH);
-    } else {
-        digitalWrite(BACK_LEFT_DIR_PIN,LOW);  
-        digitalWrite(BACK_RIGHT_DIR_PIN,LOW);
+    if(back_dir == STANDBY) digitalWrite(BACK_STANDBY_PIN,LOW);
+    else{
+        digitalWrite(BACK_STANDBY_PIN,HIGH);
+        if(back_dir == CLOCKWISE)digitalWrite(BACK_DIR_PIN,HIGH);
+        else if(back_dir == COUNTERCLOCKWISE)digitalWrite(BACK_DIR_PIN,LOW);
     }
-    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
-    back_right_speed = back_left_speed;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
     ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);
 }
 //========================================================================
@@ -386,23 +413,79 @@ void encoderCalc(){
     
     if(left_encoder_state && !last_left_encoder_state) left_start = micros();
     else if(!left_encoder_state && last_left_encoder_state){
-        left_period = micros() - left_start;
+        left_fall = micros();
+        left_period = 2 * (micros() - left_start);
+        if(left_period > PERIOD_THRESH)left_period = 0;
+        left_data[left_data_cnt] = left_period;
+        float round_period = 0;
+        int err_num_cnt = 0;
+        for (int i=0; i<360; ++i) {
+            if(!left_data[i]) err_num_cnt++;
+            round_period += left_data[i]; 
+        }
+        if(err_num_cnt < ERR_NUM_THRESH){
+            round_period = round_period * 360 / (360 - err_num_cnt);
+            left_rps = 1000000.0 / round_period;
+        }
+        else left_rps = 0;
+        left_data_cnt = (left_data_cnt + 1) % 360;
     }
 
-    last_left_encoder_state = left_encoder_state;
+    if(micros() - left_fall > PAUSE_THRESH) left_rps = 0;
+    
+    last_left_encoder_state = left_encoder_state;    
 //**************************** right encoder ***************************** 
     if(digitalRead(RIGHT_ENCODER_PIN)==HIGH) right_encoder_state = true;
     else right_encoder_state = false;
     
     if(right_encoder_state && !last_right_encoder_state) right_start = micros();
     else if(!right_encoder_state && last_right_encoder_state){
-        right_period = micros() - right_start;
+        right_fall = micros();
+        right_period = 2 * (micros() - right_start);
+        if(right_period > PERIOD_THRESH)right_period = 0;
+        right_data[right_data_cnt] = right_period;
+        float round_period = 0;
+        int err_num_cnt = 0;
+        for (int i=0; i<360; ++i) {
+            if(!right_data[i]) err_num_cnt++;
+            round_period += right_data[i]; 
+        }
+        if(err_num_cnt < ERR_NUM_THRESH){
+            round_period = round_period * 360 / (360 - err_num_cnt);
+            right_rps = 1000000.0 / round_period;
+        }
+        else right_rps = 0;
+        right_data_cnt = (right_data_cnt + 1) % 360;
     }
+
+    if(micros() - right_fall > PAUSE_THRESH) right_rps = 0;
 
     last_right_encoder_state = right_encoder_state;
 }
 //========================================================================
 //====================== encoder calculation end =========================
+//========================================================================
+
+ 
+
+
+
+//========================================================================
+//========================= PID control start ============================
+//========================================================================
+void pidControl(){
+    double P = 2, D = 0.4, I = 0.1;
+    diff_rps = left_rps - right_rps; 
+    all_diff_rps += diff_rps;
+    double d_error = D * (diff_rps - last_diff_rps);
+    double p_error = P * diff_rps;
+    double i_error = I * all_diff_rps;
+    back_right_speed += (d_error + p_error + i_error);
+    back_right_speed = max(min(back_right_speed,255.0),0.0);
+    last_diff_rps = diff_rps;
+}
+//========================================================================
+//========================== PID control end =============================
 //========================================================================
 
 
@@ -456,13 +539,13 @@ void viveReceive(){
 //========================== data print start ============================
 //========================================================================
 void show(){
-    if(millis() % 500 == 0){ // print every half second
+    if(millis() % 10 == 0){ // print every half second
 //********************************* WiFi *********************************
-        Serial.print("VRX: ");Serial.print(back_left_speed);
-        Serial.print("    VRY: ");Serial.print(orient_pos);
-        Serial.print("    PTM: ");Serial.print(weapon_pos);
-        Serial.print("    SW_1: ");Serial.print(front_standby);
-        Serial.print("    SW_2: ");Serial.println(weapon_auto);
+//        Serial.print("VRX: ");Serial.print(VRX);
+//        Serial.print("    VRY: ");Serial.print(VRY);
+//        Serial.print("    PTM: ");Serial.print(PTM);
+//        Serial.print("    SW_1: ");Serial.print(SW_1);
+//        Serial.print("    SW_2: ");Serial.println(SW_2);
 //****************************** ultrosonic ******************************
 //        Serial.print("Distance: ");
 //        if(distance>=400 || distance<=2){
@@ -476,19 +559,35 @@ void show(){
 //        Serial.print(orient_pos);
 //        Serial.print("    Weapon: ");
 //        Serial.println(weapon_pos);
+//********************************* motor ********************************
+        if(back_dir == CLOCKWISE) Serial.println("CLOCKWISE");
+        else if(back_dir == COUNTERCLOCKWISE) Serial.println("COUNTERCLOCKWISE");
+        else Serial.println("STANDBY");
+        
+        Serial.print("back left PWM: ");
+        Serial.print(back_left_speed);
+        Serial.print("    back right PWM: ");
+        Serial.println(back_right_speed);
 //******************************** encoder *******************************
-        Serial.print("left period: ");
-        Serial.print(left_period);
-        Serial.print("   right period: ");
-        Serial.println(right_period);
+//        Serial.print("left period: ");
+//        Serial.print(left_period);
+//        Serial.print("   right period: ");
+//        Serial.println(right_period);
+        Serial.print("left speed: ");
+        Serial.print(left_rps);
+        Serial.print(" rps    right speed: ");
+        Serial.print(right_rps);
+        Serial.print(" rps    difference: ");
+        Serial.print(diff_rps);
+        Serial.println(" rps");
 //********************************* vive *********************************
 //        if(is_x_found && is_y_found){
 //            Serial.print("x = ");
 //            Serial.print(x_coor);
 //            Serial.print("    y = ");
 //            Serial.println(y_coor);
-        } 
-//    }
+//        } 
+    }
 }
 //========================================================================
 //=========================== data print end =============================
