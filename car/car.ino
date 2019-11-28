@@ -16,9 +16,10 @@
 //========================================================================
 #include <WiFi.h>
 #include <WiFiUDP.h>
+//#include <cmath>
 //========================================================================
 //============================= library end ==============================
-//========================================================================
+//=======================99=================================================
 
 
 
@@ -26,18 +27,24 @@
 
 //========================================================================
 //====================== constant definition start =======================
-//========================================================================
+//=============================== =========================================
 #define    CLOCKWISE               1  
 #define    COUNTERCLOCKWISE        -1  
-#define    LEDC_RESOLUTION_BITS    13
-#define    SERVO_LEDC_CHANNEL      0
-#define    SERVO_LEDC_FREQ_HZ      50 
-#define    MOTOR_LEDC_CHANNEL      1
-#define    MOTOR_LEDC_FREQ_HZ      1000    
+#define    LEDC_RESOLUTION_BITS    8
+#define    LEDC_RESOLUTION         255
+//********************************* servo ********************************
+#define    SERVO_FREQ_HZ           50
+#define    ORIENT_CHANNEL          0
+#define    WEAPON_CHANNEL          1
 #define    ORIENT_MIN_ANGLE        900
 #define    ORIENT_MAX_ANGLE        1000
 #define    WEAPON_MIN_ANGLE        200
 #define    WEAPON_MAX_ANGLE        1000
+ //********************************* motor ********************************
+#define    MOTOR_FREQ_HZ           1000    
+#define    BACK_LEFT_CHANNEL       2
+#define    BACK_RIGHT_CHANNEL      3
+#define    MOTOR_ZERO_SPEED        119
 //========================================================================
 //======================= constant definition end ========================
 //========================================================================
@@ -97,7 +104,7 @@ int weapon_dir = CLOCKWISE;
 bool weapon_auto = false;
 //********************************* motor ********************************
 int back_left_speed = 0, back_right_speed = 0;
-bool back_left_dir = true, back_right_dir = true;
+bool back_dir = true;
 bool front_standby = true, back_standby = true;
 //********************************* vive *********************************
 bool vive_state = false, last_vive_state = false;
@@ -126,6 +133,7 @@ void setup(){
 void loop(){
     WiFi_Reconnect();
     UDPreceiveData();
+    backMotorControl();
 //    ultraDectect();
     show();
 //    orientServoControl();
@@ -166,13 +174,15 @@ void pinSetup(){
 //========================================================================
 void PWMSetup(){
 //********************************* servo ********************************
-    ledcSetup(SERVO_LEDC_CHANNEL,SERVO_LEDC_FREQ_HZ,LEDC_RESOLUTION_BITS);
-    ledcAttachPin(ORIENT_SERVO_PIN,SERVO_LEDC_CHANNEL); 
-    ledcAttachPin(WEAPON_SERVO_PIN,SERVO_LEDC_CHANNEL); 
+    ledcSetup(ORIENT_CHANNEL,SERVO_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcSetup(WEAPON_CHANNEL,SERVO_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcAttachPin(ORIENT_SERVO_PIN,ORIENT_CHANNEL); 
+    ledcAttachPin(WEAPON_SERVO_PIN,WEAPON_CHANNEL); 
 //********************************* motor ********************************
-    ledcSetup(MOTOR_LEDC_CHANNEL,MOTOR_LEDC_FREQ_HZ,LEDC_RESOLUTION_BITS);
-    ledcAttachPin(BACK_LEFT_EN_PIN,MOTOR_LEDC_CHANNEL); 
-    ledcAttachPin(BACK_RIGHT_EN_PIN,MOTOR_LEDC_CHANNEL);
+    ledcSetup(BACK_LEFT_CHANNEL,MOTOR_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcSetup(BACK_RIGHT_CHANNEL,MOTOR_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcAttachPin(BACK_LEFT_EN_PIN,BACK_LEFT_CHANNEL); 
+    ledcAttachPin(BACK_RIGHT_EN_PIN,BACK_RIGHT_CHANNEL);
 }
 //========================================================================
 //============================ PWM setup end =============================
@@ -246,9 +256,12 @@ void UDPreceiveData(){
     if (udp.parsePacket())
     {
         udp.read(receive_buffer, packetSize);
+
+        back_left_speed = abs(receive_buffer[0] - MOTOR_ZERO_SPEED);
+        back_dir = receive_buffer[0] > MOTOR_ZERO_SPEED ? true : false;
+        if(back_dir)back_left_speed = map(back_left_speed,1,LEDC_RESOLUTION - MOTOR_ZERO_SPEED,0,LEDC_RESOLUTION);
+        else back_left_speed = map(back_left_speed,0,LEDC_RESOLUTION - 1,0,LEDC_RESOLUTION);
         
-        back_left_speed = receive_buffer[0];
-        back_right_speed = receive_buffer[0];
         orient_pos = receive_buffer[1];
         weapon_pos = receive_buffer[2];
         
@@ -294,7 +307,7 @@ void ultraDectect(){
 //========================================================================
 void orientServoControl(){
     while(millis()%3==0){
-        ledcWrite(SERVO_LEDC_CHANNEL,orient_pos);
+        ledcWrite(ORIENT_CHANNEL,orient_pos);
         orient_pos += orient_dir;
         if(orient_pos == ORIENT_MAX_ANGLE || orient_pos == ORIENT_MIN_ANGLE){
             orient_dir = -orient_dir;
@@ -314,7 +327,7 @@ void orientServoControl(){
 //========================================================================
 void weaponServoControl(){
     while(millis()%3==0){
-        ledcWrite(SERVO_LEDC_CHANNEL,weapon_pos);
+        ledcWrite(WEAPON_CHANNEL,weapon_pos);
         weapon_pos += weapon_dir;
         if(weapon_pos == WEAPON_MAX_ANGLE || weapon_pos == WEAPON_MIN_ANGLE){
             weapon_dir = -weapon_dir;
@@ -323,6 +336,27 @@ void weaponServoControl(){
 }
 //========================================================================
 //====================== weapon servo control end ========================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//====================== back motor control start ========================
+//========================================================================
+void backMotorControl(){
+    if(back_dir) {
+        digitalWrite(BACK_LEFT_DIR_PIN,HIGH);
+        digitalWrite(BACK_RIGHT_DIR_PIN,HIGH);
+    } else {
+        digitalWrite(BACK_LEFT_DIR_PIN,LOW);  
+        digitalWrite(BACK_RIGHT_DIR_PIN,LOW);
+    }
+    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);    
+}
+//========================================================================
+//======================= back motor control end =========================
 //========================================================================
 
 
