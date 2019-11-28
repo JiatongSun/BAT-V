@@ -141,6 +141,7 @@ void loop(){
     WiFi_Reconnect();
     UDPreceiveData();
     backMotorControl();
+    encoderCalc();
 //    ultraDectect();
     show();
 //    orientServoControl();
@@ -364,6 +365,8 @@ void backMotorControl(){
         digitalWrite(BACK_RIGHT_DIR_PIN,LOW);
     }
     ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
+    back_right_speed = back_left_speed;                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+    ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);
 }
 //========================================================================
 //======================= back motor control end =========================
@@ -377,6 +380,7 @@ void backMotorControl(){
 //===================== encoder calculation start ========================
 //========================================================================
 void encoderCalc(){
+//***************************** left encoder *****************************  
     if(digitalRead(LEFT_ENCODER_PIN)==HIGH) left_encoder_state = true;
     else left_encoder_state = false;
     
@@ -384,6 +388,18 @@ void encoderCalc(){
     else if(!left_encoder_state && last_left_encoder_state){
         left_period = micros() - left_start;
     }
+
+    last_left_encoder_state = left_encoder_state;
+//**************************** right encoder ***************************** 
+    if(digitalRead(RIGHT_ENCODER_PIN)==HIGH) right_encoder_state = true;
+    else right_encoder_state = false;
+    
+    if(right_encoder_state && !last_right_encoder_state) right_start = micros();
+    else if(!right_encoder_state && last_right_encoder_state){
+        right_period = micros() - right_start;
+    }
+
+    last_right_encoder_state = right_encoder_state;
 }
 //========================================================================
 //====================== encoder calculation end =========================
@@ -462,7 +478,9 @@ void show(){
 //        Serial.println(weapon_pos);
 //******************************** encoder *******************************
         Serial.print("left period: ");
-        Serial.println(left_period);
+        Serial.print(left_period);
+        Serial.print("   right period: ");
+        Serial.println(right_period);
 //********************************* vive *********************************
 //        if(is_x_found && is_y_found){
 //            Serial.print("x = ");
