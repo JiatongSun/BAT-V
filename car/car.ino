@@ -16,7 +16,6 @@
 //========================================================================
 #include <WiFi.h>
 #include <WiFiUDP.h>
-//#include <cmath>
 //========================================================================
 //============================= library end ==============================
 //=======================99=================================================
@@ -67,8 +66,11 @@
 #define    BACK_LEFT_DIR_PIN       26
 #define    BACK_RIGHT_EN_PIN       27
 #define    BACK_RIGHT_DIR_PIN      14
-#define    BACK_DRIVER_STANDBY     21
+#define    BACK_STANDBY_PIN        21
 #define    FRONT_WHEEL_PIN         19
+//******************************** encoder *******************************
+#define    LEFT_ENCODER_PIN        36
+#define    RIGHT_ENCODER_PIN       39
 //********************************* vive *********************************
 #define    VIVE_PIN                13
 //******************************** top hat *******************************
@@ -106,6 +108,11 @@ bool weapon_auto = false;
 int back_left_speed = 0, back_right_speed = 0;
 bool back_dir = true;
 bool front_standby = true, back_standby = true;
+//******************************** encoder *******************************
+bool left_encoder_state = false, last_left_encoder_state = false;
+bool right_encoder_state = false, last_right_encoder_state = false;
+long left_start = 0, right_start = 0;
+long left_period = 0, right_period = 0;
 //********************************* vive *********************************
 bool vive_state = false, last_vive_state = false;
 int sync_cnt = 0;
@@ -156,8 +163,11 @@ void pinSetup(){
 //********************************* motor ********************************
     pinMode(BACK_LEFT_DIR_PIN,OUTPUT);
     pinMode(BACK_RIGHT_DIR_PIN,OUTPUT);
-    pinMode(BACK_DRIVER_STANDBY,OUTPUT);
+    pinMode(BACK_STANDBY_PIN,OUTPUT);
     pinMode(FRONT_WHEEL_PIN,OUTPUT);
+//******************************** encoder *******************************
+    pinMode(LEFT_ENCODER_PIN,INPUT);
+    pinMode(RIGHT_ENCODER_PIN,INPUT);
 //********************************* vive *********************************
     pinMode(VIVE_PIN,INPUT); 
 }
@@ -260,7 +270,7 @@ void UDPreceiveData(){
         back_left_speed = abs(receive_buffer[0] - MOTOR_ZERO_SPEED);
         back_dir = receive_buffer[0] > MOTOR_ZERO_SPEED ? true : false;
         if(back_dir)back_left_speed = map(back_left_speed,1,LEDC_RESOLUTION - MOTOR_ZERO_SPEED,0,LEDC_RESOLUTION);
-        else back_left_speed = map(back_left_speed,0,LEDC_RESOLUTION - 1,0,LEDC_RESOLUTION);
+        else back_left_speed = map(back_left_speed,0,MOTOR_ZERO_SPEED - 1,0,LEDC_RESOLUTION);
         
         orient_pos = receive_buffer[1];
         weapon_pos = receive_buffer[2];
@@ -353,10 +363,30 @@ void backMotorControl(){
         digitalWrite(BACK_LEFT_DIR_PIN,LOW);  
         digitalWrite(BACK_RIGHT_DIR_PIN,LOW);
     }
-    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);    
+    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
 }
 //========================================================================
 //======================= back motor control end =========================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//===================== encoder calculation start ========================
+//========================================================================
+void encoderCalc(){
+    if(digitalRead(LEFT_ENCODER_PIN)==HIGH) left_encoder_state = true;
+    else left_encoder_state = false;
+    
+    if(left_encoder_state && !last_left_encoder_state) left_start = micros();
+    else if(!left_encoder_state && last_left_encoder_state){
+        left_period = micros() - left_start;
+    }
+}
+//========================================================================
+//====================== encoder calculation end =========================
 //========================================================================
 
 
@@ -430,14 +460,17 @@ void show(){
 //        Serial.print(orient_pos);
 //        Serial.print("    Weapon: ");
 //        Serial.println(weapon_pos);
+//******************************** encoder *******************************
+        Serial.print("left period: ");
+        Serial.println(left_period);
 //********************************* vive *********************************
-        if(is_x_found && is_y_found){
+//        if(is_x_found && is_y_found){
 //            Serial.print("x = ");
 //            Serial.print(x_coor);
 //            Serial.print("    y = ");
 //            Serial.println(y_coor);
         } 
-    }
+//    }
 }
 //========================================================================
 //=========================== data print end =============================
