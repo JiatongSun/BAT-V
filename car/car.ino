@@ -27,28 +27,31 @@
 //========================================================================
 //====================== constant definition start =======================
 //=============================== ========================================
-#define    CLOCKWISE               1  
-#define    COUNTERCLOCKWISE        -1  
-#define    STANDBY                 0
-#define    LEDC_RESOLUTION_BITS    8
-#define    LEDC_RESOLUTION         255
-//********************************* servo ********************************
-#define    SERVO_FREQ_HZ           50
-#define    ORIENT_CHANNEL          0
-#define    WEAPON_CHANNEL          1
-#define    ORIENT_MIN_ANGLE        900
-#define    ORIENT_MAX_ANGLE        1000
-#define    WEAPON_MIN_ANGLE        200
-#define    WEAPON_MAX_ANGLE        1000
- //********************************* motor ********************************
-#define    MOTOR_FREQ_HZ           1000    
-#define    BACK_LEFT_CHANNEL       2
-#define    BACK_RIGHT_CHANNEL      3
-#define    MOTOR_ZERO_SPEED        119
+#define    CLOCKWISE                1  
+#define    COUNTERCLOCKWISE         -1  
+#define    STANDBY                  0
+//********************************* servo *******************************
+#define    SERVO_RESOLUTION_BITS    13
+#define    SERVO_RESOLUTION         8191
+#define    SERVO_FREQ_HZ            50
+#define    ORIENT_CHANNEL           0
+#define    WEAPON_CHANNEL           1
+#define    ORIENT_MIN_ANGLE         300
+#define    ORIENT_MAX_ANGLE         450
+#define    WEAPON_MIN_ANGLE         200
+#define    WEAPON_MID_ANGLE         600
+#define    WEAPON_MAX_ANGLE         1000
+//********************************* motor ********************************
+#define    MOTOR_RESOLUTION_BITS    8
+#define    MOTOR_RESOLUTION         255
+#define    MOTOR_FREQ_HZ            1000    
+#define    BACK_LEFT_CHANNEL        2
+#define    BACK_RIGHT_CHANNEL       3
+#define    MOTOR_ZERO_SPEED         119
 //******************************** encoder *******************************
-#define    PERIOD_THRESH           10000
-#define    ERR_NUM_THRESH          180
-#define    PAUSE_THRESH            20000
+#define    PERIOD_THRESH            10000
+#define    ERR_NUM_THRESH           180
+#define    PAUSE_THRESH             20000
 //========================================================================
 //======================= constant definition end ========================
 //========================================================================
@@ -71,7 +74,8 @@
 #define    BACK_RIGHT_EN_PIN       27
 #define    BACK_DIR_PIN            26
 #define    BACK_STANDBY_PIN        21
-#define    FRONT_WHEEL_PIN         19
+#define    FRONT_DIR_PIN           14
+#define    FRONT_EN_PIN            19 
 //******************************** encoder *******************************
 #define    LEFT_ENCODER_PIN        36
 #define    RIGHT_ENCODER_PIN       39
@@ -123,6 +127,7 @@ long left_data[360] = {0}, right_data[360] = {0};
 double left_rps = 0, right_rps = 0;
 long left_fall = 0, right_fall = 0;
 //********************************* PID **********************************
+bool is_pid = false;
 double diff_rps = 0;
 double last_diff_rps = 0;
 double all_diff_rps = 0;
@@ -153,12 +158,14 @@ void setup(){
 void loop(){
     WiFi_Reconnect();
     UDPreceiveData();
+    orientServoControl();
+    weaponServoControl();
     backMotorControl();
-//    encoderCalc();
+    frontMotorControl();
+    encoderCalc();  
 //    pidControl();
 //    ultraDectect();
     show();
-//    orientServoControl();
 }
 //========================================================================
 //========================== main function end ===========================
@@ -178,7 +185,8 @@ void pinSetup(){
 //********************************* motor ********************************
     pinMode(BACK_DIR_PIN,OUTPUT);
     pinMode(BACK_STANDBY_PIN,OUTPUT);
-    pinMode(FRONT_WHEEL_PIN,OUTPUT);
+    pinMode(FRONT_EN_PIN,OUTPUT);
+    pinMode(FRONT_DIR_PIN,OUTPUT);
 //******************************** encoder *******************************
     pinMode(LEFT_ENCODER_PIN,INPUT);
     pinMode(RIGHT_ENCODER_PIN,INPUT);
@@ -198,13 +206,13 @@ void pinSetup(){
 //========================================================================
 void PWMSetup(){
 //********************************* servo ********************************
-    ledcSetup(ORIENT_CHANNEL,SERVO_FREQ_HZ,LEDC_RESOLUTION_BITS);
-    ledcSetup(WEAPON_CHANNEL,SERVO_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcSetup(ORIENT_CHANNEL,SERVO_FREQ_HZ,SERVO_RESOLUTION_BITS);
+    ledcSetup(WEAPON_CHANNEL,SERVO_FREQ_HZ,SERVO_RESOLUTION_BITS);
     ledcAttachPin(ORIENT_SERVO_PIN,ORIENT_CHANNEL); 
     ledcAttachPin(WEAPON_SERVO_PIN,WEAPON_CHANNEL); 
 //********************************* motor ********************************
-    ledcSetup(BACK_LEFT_CHANNEL,MOTOR_FREQ_HZ,LEDC_RESOLUTION_BITS);
-    ledcSetup(BACK_RIGHT_CHANNEL,MOTOR_FREQ_HZ,LEDC_RESOLUTION_BITS);
+    ledcSetup(BACK_LEFT_CHANNEL,MOTOR_FREQ_HZ,MOTOR_RESOLUTION_BITS);
+    ledcSetup(BACK_RIGHT_CHANNEL,MOTOR_FREQ_HZ,MOTOR_RESOLUTION_BITS);
     ledcAttachPin(BACK_LEFT_EN_PIN,BACK_LEFT_CHANNEL); 
     ledcAttachPin(BACK_RIGHT_EN_PIN,BACK_RIGHT_CHANNEL);
 }
@@ -287,29 +295,29 @@ void UDPreceiveData(){
         SW_1 = receive_buffer[3];
         SW_2 = receive_buffer[4];
 
-        back_left_speed = abs(receive_buffer[0] - MOTOR_ZERO_SPEED);
-        if(receive_buffer[0] > MOTOR_ZERO_SPEED) {
+        back_left_speed = abs(VRX - MOTOR_ZERO_SPEED);
+        if(VRX > MOTOR_ZERO_SPEED) {
             back_dir = CLOCKWISE;
-            back_left_speed = map(back_left_speed,1,LEDC_RESOLUTION - MOTOR_ZERO_SPEED,0,LEDC_RESOLUTION);
+            back_left_speed = map(back_left_speed,1,MOTOR_RESOLUTION - MOTOR_ZERO_SPEED,0,MOTOR_RESOLUTION);
         }
-        else if(receive_buffer[0] < MOTOR_ZERO_SPEED) {
+        else if(VRX < MOTOR_ZERO_SPEED) {
             back_dir = COUNTERCLOCKWISE;
-            back_left_speed = map(back_left_speed,0,MOTOR_ZERO_SPEED - 1,0,LEDC_RESOLUTION);
+            back_left_speed = map(back_left_speed,0,MOTOR_ZERO_SPEED - 1,0,MOTOR_RESOLUTION);
         }
         else {
             back_dir = STANDBY;
             back_left_speed = 0;
         }
         back_right_speed = back_left_speed;
+
+        orient_pos = map(VRY, 1, 255, ORIENT_MIN_ANGLE, ORIENT_MAX_ANGLE);
+        weapon_pos = map(PTM, 1, 255, WEAPON_MIN_ANGLE, WEAPON_MAX_ANGLE);
         
-        orient_pos = receive_buffer[1];
-        weapon_pos = receive_buffer[2];
+        if(SW_1 == 1)weapon_auto = true;
+        else weapon_auto = false;
         
-        if(receive_buffer[3]==1)front_standby = true;
-        else front_standby = false;
-        
-        if(receive_buffer[4]==1)weapon_auto = true;
-        else weapon_auto = false ;
+        if(SW_2 == 1)front_standby = true;
+        else front_standby = false ;
     }
 }
 //========================================================================
@@ -346,13 +354,7 @@ void ultraDectect(){
 //===================== orient servo control start =======================
 //========================================================================
 void orientServoControl(){
-    while(millis()%3==0){
-        ledcWrite(ORIENT_CHANNEL,orient_pos);
-        orient_pos += orient_dir;
-        if(orient_pos == ORIENT_MAX_ANGLE || orient_pos == ORIENT_MIN_ANGLE){
-            orient_dir = -orient_dir;
-        }
-    }
+    ledcWrite(ORIENT_CHANNEL,orient_pos);
 }
 //========================================================================
 //====================== orient servo control end ========================
@@ -366,12 +368,19 @@ void orientServoControl(){
 //===================== weapon servo control start =======================
 //========================================================================
 void weaponServoControl(){
-    while(millis()%3==0){
-        ledcWrite(WEAPON_CHANNEL,weapon_pos);
-        weapon_pos += weapon_dir;
-        if(weapon_pos == WEAPON_MAX_ANGLE || weapon_pos == WEAPON_MIN_ANGLE){
-            weapon_dir = -weapon_dir;
+    if(weapon_auto){
+        int angle_max = abs(weapon_pos - WEAPON_MID_ANGLE) + WEAPON_MID_ANGLE;
+        int angle_min = WEAPON_MID_ANGLE - abs(weapon_pos - WEAPON_MID_ANGLE);
+        
+        if(millis() % 3 == 0){
+            ledcWrite(WEAPON_CHANNEL,weapon_pos);
+            weapon_pos += weapon_dir;
+            if(weapon_pos == angle_max || weapon_pos == angle_min){
+                weapon_dir = -weapon_dir;
+            }
         }
+    } else {
+        ledcWrite(WEAPON_CHANNEL,weapon_pos);
     }
 }
 //========================================================================
@@ -386,14 +395,23 @@ void weaponServoControl(){
 //====================== back motor control start ========================
 //========================================================================
 void backMotorControl(){
-    if(back_dir == STANDBY) digitalWrite(BACK_STANDBY_PIN,LOW);
-    else{
+    if(is_pid){
+        if(back_dir == STANDBY) digitalWrite(BACK_STANDBY_PIN,LOW);
+        else{
+            digitalWrite(BACK_STANDBY_PIN,HIGH);
+            if(back_dir == CLOCKWISE)digitalWrite(BACK_DIR_PIN,HIGH);
+            else if(back_dir == COUNTERCLOCKWISE)digitalWrite(BACK_DIR_PIN,LOW);
+        }
+        ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
+        ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);
+    } else {
         digitalWrite(BACK_STANDBY_PIN,HIGH);
         if(back_dir == CLOCKWISE)digitalWrite(BACK_DIR_PIN,HIGH);
         else if(back_dir == COUNTERCLOCKWISE)digitalWrite(BACK_DIR_PIN,LOW);
+        ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
+        ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);
     }
-    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
-    ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);
+    
 }
 //========================================================================
 //======================= back motor control end =========================
@@ -405,7 +423,7 @@ void backMotorControl(){
 
 //========================================================================
 //===================== encoder calculation start ========================
-//========================================================================
+//========================================================================  
 void encoderCalc(){
 //***************************** left encoder *****************************  
     if(digitalRead(LEFT_ENCODER_PIN)==HIGH) left_encoder_state = true;
@@ -493,6 +511,31 @@ void pidControl(){
 
 
 //========================================================================
+//===================== front motor control start ========================
+//========================================================================
+void frontMotorControl(){
+    if(left_rps < 0.5 || right_rps < 0.5){
+        digitalWrite(FRONT_EN_PIN,LOW); 
+        digitalWrite(FRONT_DIR_PIN, LOW);  
+    } else {
+        if(front_standby) {
+            digitalWrite(FRONT_EN_PIN,HIGH);
+            digitalWrite(FRONT_DIR_PIN, HIGH);
+        } else {
+            digitalWrite(FRONT_EN_PIN,LOW); 
+            digitalWrite(FRONT_DIR_PIN, LOW);
+        }
+    }
+}
+//========================================================================
+//====================== front motor control end =========================
+//========================================================================
+
+
+
+
+
+//========================================================================
 //========================= vive receive start ===========================
 //========================================================================
 void viveReceive(){
@@ -539,13 +582,13 @@ void viveReceive(){
 //========================== data print start ============================
 //========================================================================
 void show(){
-    if(millis() % 10 == 0){ // print every half second
+    if(millis() % 500 == 0){ // print every half second
 //********************************* WiFi *********************************
-//        Serial.print("VRX: ");Serial.print(VRX);
-//        Serial.print("    VRY: ");Serial.print(VRY);
-//        Serial.print("    PTM: ");Serial.print(PTM);
-//        Serial.print("    SW_1: ");Serial.print(SW_1);
-//        Serial.print("    SW_2: ");Serial.println(SW_2);
+        Serial.print("VRX: ");Serial.print(VRX);
+        Serial.print("    VRY: ");Serial.print(VRY);
+        Serial.print("    PTM: ");Serial.print(PTM);
+        Serial.print("    SW_1: ");Serial.print(SW_1);
+        Serial.print("    SW_2: ");Serial.println(SW_2);
 //****************************** ultrosonic ******************************
 //        Serial.print("Distance: ");
 //        if(distance>=400 || distance<=2){
@@ -555,19 +598,19 @@ void show(){
 //            Serial.println(" cm");
 //        }
 //********************************* servo ********************************
-//        Serial.print("Orient: ");
-//        Serial.print(orient_pos);
-//        Serial.print("    Weapon: ");
-//        Serial.println(weapon_pos);
+        Serial.print("Orient: ");
+        Serial.print(orient_pos);
+        Serial.print("    Weapon: ");
+        Serial.println(weapon_pos);
 //********************************* motor ********************************
-        if(back_dir == CLOCKWISE) Serial.println("CLOCKWISE");
-        else if(back_dir == COUNTERCLOCKWISE) Serial.println("COUNTERCLOCKWISE");
-        else Serial.println("STANDBY");
-        
-        Serial.print("back left PWM: ");
-        Serial.print(back_left_speed);
-        Serial.print("    back right PWM: ");
-        Serial.println(back_right_speed);
+//        if(back_dir == CLOCKWISE) Serial.println("CLOCKWISE");
+//        else if(back_dir == COUNTERCLOCKWISE) Serial.println("COUNTERCLOCKWISE");
+//        else Serial.println("STANDBY");
+//        
+//        Serial.print("back left PWM: ");
+//        Serial.print(back_left_speed);
+//        Serial.print("    back right PWM: ");
+//        Serial.println(back_right_speed);
 //******************************** encoder *******************************
 //        Serial.print("left period: ");
 //        Serial.print(left_period);
