@@ -30,6 +30,8 @@
 #define    CLOCKWISE                1  
 #define    COUNTERCLOCKWISE         -1  
 #define    STANDBY                  0
+#define    AUTONOMOUS               0
+#define    MANUAL                   1
 //********************************* servo *******************************
 #define    SERVO_RESOLUTION_BITS    13
 #define    SERVO_RESOLUTION         8191
@@ -74,8 +76,8 @@
 #define    BACK_RIGHT_EN_PIN       27
 #define    BACK_DIR_PIN            26
 #define    BACK_STANDBY_PIN        21
-#define    FRONT_DIR_PIN           14
-#define    FRONT_EN_PIN            19 
+#define    FRONT_DIR_PIN           19
+#define    FRONT_EN_PIN            14 
 //******************************** encoder *******************************
 #define    LEFT_ENCODER_PIN        36
 #define    RIGHT_ENCODER_PIN       39
@@ -96,6 +98,11 @@
 //========================================================================
 //================== global variables definition start ===================
 //========================================================================
+//********************************* mode *********************************
+bool cur_mode = MANUAL;
+//********************************* timer ********************************
+hw_timer_t* timer = NULL;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 //********************************* WiFi *********************************
 const char* ssid = "BAT_V", * pass = "BATATABANANA";  
 IPAddress IPlocal(192,168,1,179), IPtarget(192,168,1,171);  
@@ -112,6 +119,7 @@ int orient_pos = ORIENT_MIN_ANGLE;
 int orient_dir = CLOCKWISE;
 int weapon_pos = WEAPON_MIN_ANGLE;
 int weapon_dir = CLOCKWISE;
+bool weapon_mode = MANUAL;
 bool weapon_auto = false;
 //********************************* motor ********************************
 double back_left_speed = 0, back_right_speed = 0;
@@ -151,6 +159,7 @@ bool is_x_found = false, is_y_found = false;
 void setup(){
     Serial.begin(115200); 
     STA_UDP_Set();
+    timerSetup();
     pinSetup();
     PWMSetup();
 }  
@@ -162,7 +171,8 @@ void loop(){
     weaponServoControl();
     backMotorControl();
     frontMotorControl();
-    encoderCalc();  
+    encoderCalc();
+    viveReceive();  
 //    pidControl();
 //    ultraDectect();
     show();
@@ -218,6 +228,39 @@ void PWMSetup(){
 }
 //========================================================================
 //============================ PWM setup end =============================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//============================ interrupt start ===========================
+//========================================================================
+void IRAM_ATTR onTimer(){
+    portENTER_CRITICAL_ISR(&mux);
+    weapon_auto = true;
+    portEXIT_CRITICAL_ISR(&mux);
+}
+//========================================================================
+//============================= interrupt end ============================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//========================== timer setup start ===========================
+//========================================================================
+void timerSetup(){
+    timer = timerBegin(0, 80, true);
+    timerAttachInterrupt(timer, &onTimer, true);
+    timerAlarmWrite(timer, 2000, true); 
+    timerAlarmEnable(timer);       
+}
+//========================================================================
+//========================== timer setup start ===========================
 //========================================================================
 
 
@@ -311,10 +354,9 @@ void UDPreceiveData(){
         back_right_speed = back_left_speed;
 
         orient_pos = map(VRY, 1, 255, ORIENT_MIN_ANGLE, ORIENT_MAX_ANGLE);
-        weapon_pos = map(PTM, 1, 255, WEAPON_MIN_ANGLE, WEAPON_MAX_ANGLE);
         
-        if(SW_1 == 1)weapon_auto = true;
-        else weapon_auto = false;
+        if(SW_1 == 1)weapon_mode = AUTONOMOUS;
+        else weapon_mode = MANUAL;
         
         if(SW_2 == 1)front_standby = true;
         else front_standby = false ;
@@ -323,6 +365,7 @@ void UDPreceiveData(){
 //========================================================================
 //============================ UDP receive end ===========================
 //========================================================================
+
 
 
 
@@ -365,26 +408,61 @@ void orientServoControl(){
 
 
 //========================================================================
-//===================== weapon servo control start =======================
+//====================== weapon servo control start ======================
 //========================================================================
 void weaponServoControl(){
+    weaponAutoControl();
+    weaponManualControl();
+}
+//========================================================================
+//====================== weapon servo control end ========================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//====================== weapon auto control start =======================
+//========================================================================
+void weaponAutoControl(){
     if(weapon_auto){
-        int angle_max = abs(weapon_pos - WEAPON_MID_ANGLE) + WEAPON_MID_ANGLE;
-        int angle_min = WEAPON_MID_ANGLE - abs(weapon_pos - WEAPON_MID_ANGLE);
-        
-        if(millis() % 3 == 0){
+        weapon_auto = false;
+        if(weapon_mode == AUTONOMOUS){
+            int max_pos = map(PTM, 1, 255, WEAPON_MIN_ANGLE, WEAPON_MAX_ANGLE);
+            int angle_max = WEAPON_MID_ANGLE + abs(max_pos - WEAPON_MID_ANGLE);
+            int angle_min = WEAPON_MID_ANGLE - abs(max_pos - WEAPON_MID_ANGLE);
+
+            if(weapon_pos < angle_min || weapon_pos > angle_max){
+                weapon_pos = WEAPON_MID_ANGLE;
+            }
             ledcWrite(WEAPON_CHANNEL,weapon_pos);
             weapon_pos += weapon_dir;
             if(weapon_pos == angle_max || weapon_pos == angle_min){
                 weapon_dir = -weapon_dir;
             }
         }
-    } else {
+    }
+}
+//========================================================================
+//======================= weapon auto control end ========================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//===================== weapon manual control start ======================
+//========================================================================
+void weaponManualControl(){
+    if(weapon_mode == MANUAL){
+        weapon_pos = map(PTM, 1, 255, WEAPON_MIN_ANGLE, WEAPON_MAX_ANGLE);
         ledcWrite(WEAPON_CHANNEL,weapon_pos);
     }
 }
 //========================================================================
-//====================== weapon servo control end ========================
+//====================== weapon manual control end =======================
 //========================================================================
 
 
@@ -601,7 +679,10 @@ void show(){
         Serial.print("Orient: ");
         Serial.print(orient_pos);
         Serial.print("    Weapon: ");
-        Serial.println(weapon_pos);
+        Serial.print(weapon_pos);
+        Serial.print("    Weapon Mode: ");
+        if(weapon_mode == AUTONOMOUS)Serial.println("AUTO");
+        else Serial.println("MANUAL");
 //********************************* motor ********************************
 //        if(back_dir == CLOCKWISE) Serial.println("CLOCKWISE");
 //        else if(back_dir == COUNTERCLOCKWISE) Serial.println("COUNTERCLOCKWISE");
@@ -622,14 +703,14 @@ void show(){
         Serial.print(right_rps);
         Serial.print(" rps    difference: ");
         Serial.print(diff_rps);
-        Serial.println(" rps");
+        Serial.println(" rps"); 
 //********************************* vive *********************************
-//        if(is_x_found && is_y_found){
-//            Serial.print("x = ");
-//            Serial.print(x_coor);
-//            Serial.print("    y = ");
-//            Serial.println(y_coor);
-//        } 
+        if(is_x_found && is_y_found){
+            Serial.print("x = ");
+            Serial.print(x_coor);
+            Serial.print("    y = ");
+            Serial.println(y_coor);
+        } 
     }
 }
 //========================================================================
