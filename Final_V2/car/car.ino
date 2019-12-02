@@ -66,27 +66,29 @@
 //========================= pin definition start =========================
 //========================================================================
 //****************************** ultrosonic ******************************
-#define    TRIGGER_PIN             23
-#define    ECHO_PIN                22
+#define    TRIGGER_PIN             19
+#define    ECHO_PIN                18
 //********************************* servo ********************************
-#define    ORIENT_SERVO_PIN        17
-#define    WEAPON_SERVO_PIN        16
+#define    ORIENT_SERVO_PIN        23
+#define    WEAPON_SERVO_PIN        22
 //********************************* motor ********************************
-#define    BACK_LEFT_EN_PIN        32
-#define    BACK_RIGHT_EN_PIN       27
-#define    BACK_DIR_PIN            26
-#define    BACK_STANDBY_PIN        14
-#define    FRONT_DIR_PIN           21
-#define    FRONT_EN_PIN            14 
+#define    BACK_LEFT_EN_PIN        25
+#define    BACK_RIGHT_EN_PIN       26
+#define    BACK_DIR_PIN            32
+#define    BACK_IDIR_PIN           33
+#define    FRONT_DIR_PIN           13
+#define    FRONT_EN_PIN            27
 //******************************** encoder *******************************
 #define    LEFT_ENCODER_PIN        36
 #define    RIGHT_ENCODER_PIN       39
 //********************************* vive *********************************
-#define    VIVE_PIN                13
+#define    VIVE_PIN                21
 //******************************** top hat *******************************
-#define    I2C_CLK_PIN             33
-#define    I2C_DAT_PIN             25
-#define    NEOPIXEL_PIN            12
+#define    I2C_CLK_PIN             17
+#define    I2C_DAT_PIN             16
+#define    NEOPIXEL_PIN            4
+//********************************** LED *********************************
+#define    LED_PIN                 14
 //========================================================================
 //========================== pin definition end ==========================
 //========================================================================
@@ -167,13 +169,17 @@ void setup(){
 void loop(){
     WiFi_Reconnect();
     UDPreceiveData();
+    
     orientServoControl();
     weaponServoControl();
-    backMotorControl();
-    frontMotorControl();
+
+    pidControl();
     encoderCalc();
-    viveReceive();  
-//    pidControl();
+    viveReceive(); 
+
+    backMotorControl();
+    frontMotorControl();  
+    
 //    ultraDectect();
     show();
 }
@@ -194,7 +200,7 @@ void pinSetup(){
     pinMode(ECHO_PIN,INPUT);
 //********************************* motor ********************************
     pinMode(BACK_DIR_PIN,OUTPUT);
-    pinMode(BACK_STANDBY_PIN,OUTPUT);
+    pinMode(BACK_IDIR_PIN,OUTPUT);
     pinMode(FRONT_EN_PIN,OUTPUT);
     pinMode(FRONT_DIR_PIN,OUTPUT);
 //******************************** encoder *******************************
@@ -306,7 +312,8 @@ void STA_UDP_Set(){
 //========================================================================
 void WiFi_Reconnect(){  // if WiFi disconnected, try to reconnect automatically
     if (WiFi.status() != WL_CONNECTED){
-        digitalWrite(BACK_STANDBY_PIN,LOW);
+        digitalWrite(BACK_DIR_PIN,LOW);
+        digitalWrite(BACK_IDIR_PIN,LOW);
         digitalWrite(LED_BUILTIN, HIGH);  
         WiFi.begin(ssid, pass); 
         IPAddress gateway(192,168,1,1);
@@ -474,23 +481,19 @@ void weaponManualControl(){
 //====================== back motor control start ========================
 //========================================================================
 void backMotorControl(){
-    if(is_pid){
-        if(back_dir == STANDBY) digitalWrite(BACK_STANDBY_PIN,LOW);
-        else{
-            digitalWrite(BACK_STANDBY_PIN,HIGH);
-            if(back_dir == CLOCKWISE)digitalWrite(BACK_DIR_PIN,HIGH);
-            else if(back_dir == COUNTERCLOCKWISE)digitalWrite(BACK_DIR_PIN,LOW);
-        }
-        ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
-        ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);
-    } else {
-        digitalWrite(BACK_STANDBY_PIN,HIGH);
-        if(back_dir == CLOCKWISE)digitalWrite(BACK_DIR_PIN,HIGH);
-        else if(back_dir == COUNTERCLOCKWISE)digitalWrite(BACK_DIR_PIN,LOW);
-        ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
-        ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);
+    if(back_dir == CLOCKWISE){
+        digitalWrite(BACK_DIR_PIN,HIGH);
+        digitalWrite(BACK_IDIR_PIN,LOW); 
     }
-    
+    else if(back_dir == COUNTERCLOCKWISE){
+        digitalWrite(BACK_DIR_PIN,LOW);
+        digitalWrite(BACK_IDIR_PIN,HIGH); 
+    } else{
+        digitalWrite(BACK_DIR_PIN,LOW);
+        digitalWrite(BACK_IDIR_PIN,LOW);      
+    }
+    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
+    ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);  
 }
 //========================================================================
 //======================= back motor control end =========================
@@ -571,15 +574,17 @@ void encoderCalc(){
 //========================= PID control start ============================
 //========================================================================
 void pidControl(){
-    double P = 2, D = 0.4, I = 0.1;
-    diff_rps = left_rps - right_rps; 
-    all_diff_rps += diff_rps;
-    double d_error = D * (diff_rps - last_diff_rps);
-    double p_error = P * diff_rps;
-    double i_error = I * all_diff_rps;
-    back_right_speed += (d_error + p_error + i_error);
-    back_right_speed = max(min(back_right_speed,255.0),0.0);
-    last_diff_rps = diff_rps;
+    if(is_pid){
+        double P = 2, D = 0.4, I = 0.1;
+        diff_rps = left_rps - right_rps; 
+        all_diff_rps += diff_rps;
+        double d_error = D * (diff_rps - last_diff_rps);
+        double p_error = P * diff_rps;
+        double i_error = I * all_diff_rps;
+        back_right_speed += (d_error + p_error + i_error);
+        back_right_speed = max(min(back_right_speed,255.0),0.0);
+        last_diff_rps = diff_rps;
+    }
 }
 //========================================================================
 //========================== PID control end =============================
