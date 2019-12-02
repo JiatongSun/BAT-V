@@ -75,8 +75,8 @@
 #define    BACK_LEFT_EN_PIN        32
 #define    BACK_RIGHT_EN_PIN       27
 #define    BACK_DIR_PIN            26
-#define    BACK_STANDBY_PIN        21
-#define    FRONT_DIR_PIN           19
+#define    BACK_STANDBY_PIN        14
+#define    FRONT_DIR_PIN           21
 #define    FRONT_EN_PIN            14 
 //******************************** encoder *******************************
 #define    LEFT_ENCODER_PIN        36
@@ -306,6 +306,7 @@ void STA_UDP_Set(){
 //========================================================================
 void WiFi_Reconnect(){  // if WiFi disconnected, try to reconnect automatically
     if (WiFi.status() != WL_CONNECTED){
+        digitalWrite(BACK_STANDBY_PIN,LOW);
         digitalWrite(LED_BUILTIN, HIGH);  
         WiFi.begin(ssid, pass); 
         IPAddress gateway(192,168,1,1);
