@@ -323,7 +323,10 @@ void ShowRobotNum(void)
 
 void ShowHealth(int health)
 {
-    // TODO: implement this function
+    if(!health) return;
+    int healthleds[] = {1,2,3,4,5,7,8,9,10,11,13,14,15,16,17,19,20,21,22,23};
+    for(int i = 0; i < health; i++) leds[healthleds[i]] = HEALTHCOLOR;
+    for(int i = health; i < (NUM_LEDS - 4);i++) leds[healthleds[i]] = 0;
 }
 
 void clearLEDs(void)
@@ -336,7 +339,9 @@ void clearLEDs(void)
 
 void ShowRespawnTimer(int respawnTime)
 {
-    // TODO: implement this function
+    int num_on_leds = NUM_LEDS * respawnTime/ 15; 
+    for(int i = 0; i < num_on_leds; i++) leds[i] = RED;
+    for(int i = num_on_leds; i < NUM_LEDS - num_on_leds;i++) leds[i] = 0;
 }
 // =================================================================
 // ========================== LED end ==============================
@@ -418,6 +423,7 @@ void loop()
         }
     }
     // ========================== I2C end ==============================
+
 
     // ========================= LED start =============================
     ShowRobotNum();         // set the LEDs for the robot number

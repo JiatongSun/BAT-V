@@ -49,6 +49,7 @@
 #define    MOTOR_FREQ_HZ            1000    
 #define    BACK_LEFT_CHANNEL        2
 #define    BACK_RIGHT_CHANNEL       3
+#define    FRONT_CHANNEL            4
 #define    MOTOR_ZERO_SPEED         119
 //******************************** encoder *******************************
 #define    PERIOD_THRESH            10000
@@ -201,7 +202,6 @@ void pinSetup(){
 //********************************* motor ********************************
     pinMode(BACK_DIR_PIN,OUTPUT);
     pinMode(BACK_IDIR_PIN,OUTPUT);
-    pinMode(FRONT_EN_PIN,OUTPUT);
     pinMode(FRONT_DIR_PIN,OUTPUT);
 //******************************** encoder *******************************
     pinMode(LEFT_ENCODER_PIN,INPUT);
@@ -229,8 +229,10 @@ void PWMSetup(){
 //********************************* motor ********************************
     ledcSetup(BACK_LEFT_CHANNEL,MOTOR_FREQ_HZ,MOTOR_RESOLUTION_BITS);
     ledcSetup(BACK_RIGHT_CHANNEL,MOTOR_FREQ_HZ,MOTOR_RESOLUTION_BITS);
+    ledcSetup(FRONT_CHANNEL,MOTOR_FREQ_HZ,MOTOR_RESOLUTION_BITS);
     ledcAttachPin(BACK_LEFT_EN_PIN,BACK_LEFT_CHANNEL); 
     ledcAttachPin(BACK_RIGHT_EN_PIN,BACK_RIGHT_CHANNEL);
+    ledcAttachPin(FRONT_EN_PIN,FRONT_CHANNEL);
 }
 //========================================================================
 //============================ PWM setup end =============================
@@ -262,7 +264,7 @@ void IRAM_ATTR onTimer(){
 void timerSetup(){
     timer = timerBegin(0, 80, true);
     timerAttachInterrupt(timer, &onTimer, true);
-    timerAlarmWrite(timer, 2000, true); 
+    timerAlarmWrite(timer, 1000, true); 
     timerAlarmEnable(timer);       
 }
 //========================================================================
@@ -598,17 +600,12 @@ void pidControl(){
 //===================== front motor control start ========================
 //========================================================================
 void frontMotorControl(){
-    if(left_rps < 0.5 || right_rps < 0.5){
-        digitalWrite(FRONT_EN_PIN,LOW); 
-        digitalWrite(FRONT_DIR_PIN, LOW);  
+    if(left_rps < 0.5 || right_rps < 0.5 || back_dir == COUNTERCLOCKWISE || front_standby){
+        digitalWrite(FRONT_DIR_PIN, LOW);
+        ledcWrite(FRONT_CHANNEL,0); 
     } else {
-        if(front_standby) {
-            digitalWrite(FRONT_EN_PIN,HIGH);
-            digitalWrite(FRONT_DIR_PIN, HIGH);
-        } else {
-            digitalWrite(FRONT_EN_PIN,LOW); 
-            digitalWrite(FRONT_DIR_PIN, LOW);
-        }
+        digitalWrite(FRONT_DIR_PIN, HIGH);
+        ledcWrite(FRONT_CHANNEL,200);
     }
 }
 //========================================================================
@@ -690,14 +687,14 @@ void show(){
         if(weapon_mode == AUTONOMOUS)Serial.println("AUTO");
         else Serial.println("MANUAL");
 //********************************* motor ********************************
-//        if(back_dir == CLOCKWISE) Serial.println("CLOCKWISE");
-//        else if(back_dir == COUNTERCLOCKWISE) Serial.println("COUNTERCLOCKWISE");
-//        else Serial.println("STANDBY");
-//        
-//        Serial.print("back left PWM: ");
-//        Serial.print(back_left_speed);
-//        Serial.print("    back right PWM: ");
-//        Serial.println(back_right_speed);
+        if(back_dir == CLOCKWISE) Serial.println("CLOCKWISE");
+        else if(back_dir == COUNTERCLOCKWISE) Serial.println("COUNTERCLOCKWISE");
+        else Serial.println("STANDBY");
+        
+        Serial.print("back left PWM: ");
+        Serial.print(back_left_speed);
+        Serial.print("    back right PWM: ");
+        Serial.println(back_right_speed);
 //******************************** encoder *******************************
 //        Serial.print("left period: ");
 //        Serial.print(left_period);
