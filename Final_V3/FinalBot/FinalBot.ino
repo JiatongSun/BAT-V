@@ -55,6 +55,9 @@
 #define    PERIOD_THRESH            10000
 #define    ERR_NUM_THRESH           180
 #define    PAUSE_THRESH             20000
+//******************************** top hat *******************************
+#define    MAX_HP                   5
+#define    MAX_RESPAWN_TIME         15
 //========================================================================
 //======================= constant definition end ========================
 //========================================================================
@@ -260,13 +263,13 @@ static void disp_buf(uint8_t *buf, int len)
     int i;
     for (i = 0; i < len; i++) 
     {
-        Serial.printf("%02x ", buf[i]);
+//        Serial.printf("%02x ", buf[i]);
         if ((i + 1) % 16 == 0) 
         {
-            Serial.printf("\n");
+//            Serial.printf("\n");
         }
     }
-    Serial.printf("\n");
+//    Serial.printf("\n");
 }
 
 uint8_t data_wr[DATA_LENGTH];
@@ -281,12 +284,12 @@ static void i2c_read_test()
     if (ret == ESP_ERR_TIMEOUT) 
     {
         ESP_LOGE(TAG, "I2C Timeout");
-        Serial.println("I2C Timeout");
+//        Serial.println("I2C Timeout");
     } 
     else if (ret == ESP_OK) 
     {
         // uncomment the following 2 lines if you want to display information read from I2C
-        Serial.printf(" MASTER READ FROM SLAVE ******\n");
+//        Serial.printf(" MASTER READ FROM SLAVE ******\n");
         disp_buf(data_rd, DATA_LENGTH);
     } 
     else 
@@ -308,7 +311,7 @@ static void i2c_write_test()
     else if (ret == ESP_OK) 
     {
         // uncomment the following 2 lines if you want to display information being send over I2C
-        Serial.printf(" MASTER WRITE TO SLAVE\n");
+//        Serial.printf(" MASTER WRITE TO SLAVE\n");
         disp_buf(data_wr, W_LENGTH);
     } 
     else 
@@ -357,7 +360,7 @@ FASTLED_USING_NAMESPACE
 
 // ===== GAME VARIABLES =====
 // change ROBOTNUM (1-4) and TEAMCOLOR (BLUE or RED) as necessary
-#define ROBOTNUM    4               // robot number on meta team (1-4)
+#define ROBOTNUM    1               // robot number on meta team (1-4)
 #define TEAMCOLOR   BLUE            // color for the robot team, either RED or BLUE
 // ==========================
 
@@ -426,8 +429,8 @@ void SetupFastLED(void)
     FastLED.setBrightness(BRIGHTNESS);
 
     int core = xPortGetCoreID();
-    Serial.print("FastLED: Main code running on core ");
-    Serial.println(core);
+//    Serial.print("FastLED: Main code running on core ");
+//    Serial.println(core);
 
     // -- Create the FastLED show task
     xTaskCreatePinnedToCore(FastLEDshowTask, "FastLEDshowTask", 2048, NULL, 2, &FastLEDshowTaskHandle, FASTLED_SHOW_CORE);
@@ -468,9 +471,10 @@ void ShowRobotNum(void)
 void ShowHealth(int health)
 {
     if(!health) return;
+    int num_on_leds = (NUM_LEDS - 4) * health / MAX_HP;
     int healthleds[] = {1,2,3,4,5,7,8,9,10,11,13,14,15,16,17,19,20,21,22,23};
-    for(int i = 0; i < health; i++) leds[healthleds[i]] = HEALTHCOLOR;
-    for(int i = health; i < (NUM_LEDS - 4);i++) leds[healthleds[i]] = 0;
+    for(int i = 0; i < num_on_leds; i++) leds[healthleds[i]] = HEALTHCOLOR;
+    for(int i = num_on_leds; i < (NUM_LEDS - 4); i++) leds[healthleds[i]] = 0;
 }
 
 void clearLEDs(void)
@@ -613,12 +617,26 @@ void STA_UDP_Set(){
 
 
 //========================================================================
+//============================ preset start ==============================
+//========================================================================
+void preset(){
+    digitalWrite(BACK_DIR_PIN,LOW);
+    digitalWrite(BACK_IDIR_PIN,LOW);
+    digitalWrite(FRONT_DIR_PIN,LOW);
+}
+//========================================================================
+//============================= preset end ===============================
+//========================================================================
+
+
+
+
+
+//========================================================================
 //========================= WiFi reconnect start =========================
 //========================================================================
 void WiFi_Reconnect(){  // if WiFi disconnected, try to reconnect automatically
     if (WiFi.status() != WL_CONNECTED){
-        digitalWrite(BACK_DIR_PIN,LOW);
-        digitalWrite(BACK_IDIR_PIN,LOW);
         digitalWrite(LED_BUILTIN, HIGH);  
         WiFi.begin(ssid, pass); 
         IPAddress gateway(192,168,1,1);
@@ -671,8 +689,8 @@ void UDPreceiveData(){
         if(SW_1 == 1)weapon_mode = AUTONOMOUS;
         else weapon_mode = MANUAL;
         
-        if(SW_2 == 1)front_standby = true;
-        else front_standby = false ;
+        if(SW_2 == 1)front_standby = false;
+        else front_standby = true;
     }
 }
 //========================================================================
@@ -742,12 +760,13 @@ void weaponAutoControl(){
     if(weapon_auto){
         weapon_auto = false;
         if(weapon_mode == AUTONOMOUS){
-            int max_pos = map(PTM, 1, 255, WEAPON_MIN_ANGLE, WEAPON_MAX_ANGLE);
-            int angle_max = WEAPON_MID_ANGLE + abs(max_pos - WEAPON_MID_ANGLE);
-            int angle_min = WEAPON_MID_ANGLE - abs(max_pos - WEAPON_MID_ANGLE);
+            int max_pos = map(PTM, 1, 255, (WEAPON_MIN_ANGLE + (WEAPON_MAX_ANGLE - WEAPON_MIN_ANGLE) / 3), WEAPON_MAX_ANGLE);
+            int front_angle = WEAPON_MAX_ANGLE - (WEAPON_MAX_ANGLE - WEAPON_MIN_ANGLE) / 3;
+            int angle_max = front_angle + abs(max_pos - front_angle);
+            int angle_min = front_angle - abs(max_pos - front_angle);
 
             if(weapon_pos < angle_min || weapon_pos > angle_max){
-                weapon_pos = WEAPON_MID_ANGLE;
+                weapon_pos = front_angle;
             }
             ledcWrite(WEAPON_CHANNEL,weapon_pos);
             weapon_pos += weapon_dir;
@@ -903,7 +922,7 @@ void pidControl(){
 //===================== front motor control start ========================
 //========================================================================
 void frontMotorControl(){
-    if(left_rps < 0.5 || right_rps < 0.5 || back_dir == COUNTERCLOCKWISE || front_standby){
+    if(back_dir != CLOCKWISE || front_standby){
         digitalWrite(FRONT_DIR_PIN, LOW);
         ledcWrite(FRONT_CHANNEL,0); 
     } else {
@@ -1120,6 +1139,12 @@ void loop()
 
     FastLEDshowESP32();
     // ========================== LED end ==============================
+
+    // ===================== own function start ========================
+    preset();
+    if(!gameStatus) return;
+    if(health == 0) return;
+    if(autoMode) return;
     
     WiFi_Reconnect();
     UDPreceiveData();
@@ -1136,6 +1161,8 @@ void loop()
     
 //    ultraDectect();
     show();
+    
+    // ====================== own function end =========================
 }
 // =====================================================================
 // ========================== END OF LOOP ==============================
