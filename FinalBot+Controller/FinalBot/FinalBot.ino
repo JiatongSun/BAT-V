@@ -1154,7 +1154,7 @@ void loop()
 
     pidControl();
     encoderCalc();
-    viveReceive(); 
+//    viveReceive(); 
 
     backMotorControl();
     frontMotorControl();  
