@@ -1,11 +1,23 @@
-#define VIVE_PIN    13
+#define VIVE_PIN   21
+
+bool currentflag = false;
+bool currentstate = false;
+int signal_start = 0;
+//int time_end = 0;
+int bandwidth = 0;
+int syn = 0;
+bool is_x_found, is_y_found;
+int x_coor, y_coor;
+
+
+//#define VIVE_PIN    35
 
 bool vive_state = false, last_vive_state = false;
 int sync_cnt = 0;
 long signal_start = 0;
 long sync_end = 0;
-long x_coor = 0, y_coor = 0;
-bool is_x_found = false, is_y_found = false;
+//long x_coor = 0, y_coor = 0;
+//bool is_x_found = false, is_y_found = false;
 
 
 void setup(){
@@ -14,17 +26,26 @@ void setup(){
 }
 
 void loop(){
-    if(digitalRead(VIVE_PIN)==HIGH) vive_state = true;
-    else vive_state = false;
+    if(digitalRead(VIVE_PIN)==HIGH) {
+      vive_state = true;
+      Serial.println("true");
+    }
+    else {
+      vive_state = false;
+      Serial.println("false");
+    }
 
-    if(vive_state && !last_vive_state) signal_start = micros();
+    if(vive_state && !last_vive_state) {
+      signal_start = micros();
+      Serial.println(signal_start);
+    }
     else if(!vive_state && last_vive_state){
         long bandwidth = micros() - signal_start;
         
-        if(bandwidth > 60){
+        if(bandwidth > 100){
             sync_cnt ++;
             sync_end = micros();
-        } else if (bandwidth < 60 && bandwidth > 0){
+        } else if (bandwidth < 100 && bandwidth > 0){
             if(sync_cnt == 3){
                 is_x_found = true;
                 x_coor = micros() - sync_end;
@@ -32,6 +53,7 @@ void loop(){
                 is_y_found = true;
                 y_coor = micros() - sync_end;
             }
+            Serial.println(sync_cnt);
             sync_cnt = 0;
         }
     }
