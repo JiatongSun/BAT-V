@@ -58,7 +58,7 @@ int back_dir = 0;
 bool front_standby = true, back_standby = true;
 //******************************* autonomy *******************************
 int spin_dir = MIDDLE, last_spin_dir = MIDDLE;
-long spin_start = 0, spin_end = 0;;
+long spin_start = 0;
 //========================================================================
 //=================== global variables definition end ====================
 //========================================================================
