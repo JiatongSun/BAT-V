@@ -19,6 +19,9 @@
 #define    STANDBY                  0
 #define    AUTONOMOUS               0
 #define    MANUAL                   1
+#define    LEFT                     -1
+#define    MIDDLE                   0
+#define    RIGHT                    1
 //********************************* servo *******************************
 #define    SERVO_RESOLUTION_BITS    13
 #define    SERVO_RESOLUTION         8191
@@ -39,6 +42,8 @@
 #define    Y_ADJUST_THRESH          200
 #define    X_APPROACH_THRESH        200
 #define    Y_APPROACH_THRESH        200
+#define    BACK_TIME                300000
+#define    TURN_TIME                300000
 //========================================================================
 //======================= constant definition end ========================
 //========================================================================
@@ -88,7 +93,8 @@ portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 volatile long duration = 0; 
 volatile bool echo_rise_flag = false, echo_fall_flag = false;
 long echo_start = 0;
-float distance = 0;
+float distance = 0, last_distance = 0;
+float filter_weight = 3;
 bool is_trigger = false;
 //********************************* servo ********************************
 int orient_pos = ORIENT_MIN_ANGLE;
@@ -117,7 +123,10 @@ int sync_cnt_2 = 0;
 bool is_x_found_2 = false, is_y_found_2 = false;
 int x_coor_2 = 0, y_coor_2 = 0;
 bool vive_display_2 = false;
-
+//******************************* autonomy *******************************
+int spin_dir = MIDDLE, last_spin_dir = MIDDLE;
+int spin_mode = 0;
+long spin_start = 0;
 long front_vive_x = 0, front_vive_y = 0, back_vive_x = 0, back_vive_y = 0;
 long dx = front_vive_x - back_vive_x;
 long dy = front_vive_y - back_vive_y;
@@ -200,8 +209,8 @@ void pinDisable(){
 //********************************* motor ********************************
     pinMode(BACK_DIR_PIN,INPUT);
     pinMode(BACK_IDIR_PIN,INPUT);
-    pinMode(BACK_LEFT_EN_PIN,INPUT)
-    pinMode(BACK_RIGHT_EN_PIN,INPUT)
+    pinMode(BACK_LEFT_EN_PIN,INPUT);
+    pinMode(BACK_RIGHT_EN_PIN,INPUT);
 //********************************* vive *********************************
     pinMode(VIVE_PIN_1,INPUT); 
     pinMode(VIVE_PIN_2,INPUT); 
@@ -257,6 +266,8 @@ void IRAM_ATTR echoFall() {
     echo_fall_flag = true;
     duration = micros() - echo_start;
     distance = (duration/2)*0.0343;
+    distance = (distance * filter_weight + last_distance) / (filter_weight + 1);
+    last_distance = distance;
     portEXIT_CRITICAL_ISR(&mux);
 }
 //********************************* vive *********************************
@@ -499,15 +510,23 @@ void toDestination(){
 //============================== spin start ==============================
 //========================================================================
 void spin(){ 
-    //if( !=   
-    int spin_start_time = micros();
-     
     if(spin_dir != MIDDLE && last_spin_dir == MIDDLE){
-        
+        spin_start = micros();
+        spin_mode = 1;
+        backwards();
     }
-//    if(left_spin){
-        
+    if(micros() - spin_start > BACK_TIME && spin_mode == 1){
+        spin_start = micros();
+        spin_mode = 2;
+        if(spin_dir == LEFT) turnLeft();
+        else if(spin_dir == RIGHT) turnRight();
+        spin_mode == 2;
     }
+    if(micros() - spin_start > TURN_TIME && spin_mode == 2){
+        forwards();
+        spin_mode = 0;
+    }
+}
 
 //========================================================================
 //=============================== spin end ===============================

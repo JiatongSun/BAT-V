@@ -44,10 +44,10 @@
 //========================= pin definition start =========================
 //========================================================================
 //********************************* servo ********************************
-#define    ORIENT_SERVO_PIN        27
+#define    ORIENT_SERVO_PIN        23
 //********************************* motor ********************************
-#define    BACK_LEFT_EN_PIN        17
-#define    BACK_RIGHT_EN_PIN       16
+#define    BACK_LEFT_EN_PIN        25
+#define    BACK_RIGHT_EN_PIN       26
 #define    BACK_DIR_PIN            32
 #define    BACK_IDIR_PIN           33
 //========================================================================
@@ -338,7 +338,7 @@ void spin(){
         else if(spin_dir == RIGHT) turnRight();
         spin_mode == 2;
     }
-    if(micros - spin_start > TURN_TIME && spin_mode == 2){
+    if(micros() - spin_start > TURN_TIME && spin_mode == 2){
         forwards();
         spin_mode = 0;
     }
