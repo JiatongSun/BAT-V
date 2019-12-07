@@ -157,7 +157,7 @@ double all_diff_rps = 0;
 #define W_LENGTH 1                                  // data length for w, [0,DATA_LENGTH]
 #define R_LENGTH 16                                 // data length for r, [0,DATA_LENGTH]
 
-#define I2C_MASTER_SCL_IO (gpio_num_t)17            // gpio number for I2C master clock
+#define I2C_MASTER_SCL_IO (gpio_num_t)4             // gpio number for I2C master clock
 #define I2C_MASTER_SDA_IO (gpio_num_t)16            // gpio number for I2C master data
 #define I2C_MASTER_NUM I2C_NUMBER(1)                // I2C port number for master dev
 #define I2C_MASTER_FREQ_HZ 40000                    // I2C master clock frequency (Hz)
@@ -353,7 +353,7 @@ FASTLED_USING_NAMESPACE
 #define TEAMCOLOR   BLUE            // color for the robot team, either RED or BLUE
 // ==========================
 
-#define NEO_LED_PIN 4              // pin attached to LED ring
+#define NEO_LED_PIN 17              // pin attached to LED ring
 #define LED_TYPE    WS2812          // APA102
 #define COLOR_ORDER GRB             // changes the order so we can use standard RGB for the values
 #define NUM_LEDS    24              // number of LEDs in the ring
