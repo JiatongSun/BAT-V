@@ -17,8 +17,8 @@
 #define    CLOCKWISE                1  
 #define    COUNTERCLOCKWISE         -1  
 #define    STANDBY                  0
-#define    AUTONOMOUS               0
-#define    MANUAL                   1
+#define    AUTONOMOUS               1
+#define    MANUAL                   0
 #define    LEFT                     -1
 #define    MIDDLE                   0
 #define    RIGHT                    1
@@ -40,8 +40,8 @@
 #define    AIM_Y                    5000
 #define    X_ADJUST_THRESH          200
 #define    Y_ADJUST_THRESH          200
-#define    X_APPROACH_THRESH        200
-#define    Y_APPROACH_THRESH        200
+#define    X_APPROACH_THRESH        500
+#define    Y_APPROACH_THRESH        500
 #define    BACK_TIME                300000
 #define    TURN_TIME                300000
 //========================================================================
@@ -71,7 +71,7 @@
 #define    VIVE_PIN_1              21
 #define    VIVE_PIN_2              39
 //********************************** LED *********************************
-#define    LED_PIN_1               14
+#define    LED_PIN_1               4
 #define    LED_PIN_2               14
 //========================================================================
 //========================== pin definition end ==========================
@@ -124,14 +124,14 @@ bool is_x_found_2 = false, is_y_found_2 = false;
 int x_coor_2 = 0, y_coor_2 = 0;
 bool vive_display_2 = false;
 //******************************* autonomy *******************************
+bool auxboard_state = true, last_auxboard_state = true;
 int spin_dir = MIDDLE, last_spin_dir = MIDDLE;
 int spin_mode = 0;
 long spin_start = 0;
-long front_vive_x = 0, front_vive_y = 0, back_vive_x = 0, back_vive_y = 0;
-long dx = front_vive_x - back_vive_x;
-long dy = front_vive_y - back_vive_y;
-long x_car = 0.5 * (front_vive_x + back_vive_x);
-long y_car = 0.5 * (front_vive_y + back_vive_y);
+long dx = x_coor_1 - x_coor_2;
+long dy = y_coor_1 - y_coor_2;
+long x_car = 0.5 * (x_coor_1 + x_coor_2);
+long y_car = 0.5 * (y_coor_1 + y_coor_2);
 //========================================================================
 //=================== global variables definition end ====================
 //========================================================================
@@ -145,15 +145,17 @@ long y_car = 0.5 * (front_vive_y + back_vive_y);
 //========================================================================
 void setup(){
     Serial.begin(115200); 
-    pinSetup();
+    pinEnable();
     PWMSetup();
     ISRSetup();
 }  
 
-void loop(){    
+void loop(){   
+    checkPinSetup(); 
     viveReceive(); 
     ultraDetect();
-    backMotorControl();
+    toDestination();
+    rush();
     show();
 }
 //========================================================================
@@ -164,21 +166,27 @@ void loop(){
 
 
 //========================================================================
-//======================= judge board status start =======================
+//======================== check pin setup start  ========================
 //========================================================================
-void judgeBoardState{
-      if (digitalRead(CONNECT_PIN) == )
+void checkPinSetup(){
+      auxboard_state = digitalRead(CONNECT_PIN);
+      if((auxboard_state == MANUAL) && (last_auxboard_state != auxboard_state)){
+        pinDisable();
+      }else if((auxboard_state == AUTONOMOUS) && (last_auxboard_state != auxboard_state)){
+        pinEnable();
+      }
+      last_auxboard_state = auxboard_state;
 }
 //========================================================================
-//======================= judge board status end =========================
+//========================= check pin setup end  =========================
 //========================================================================
 
 
 
 //========================================================================
-//=========================== pin setup start ============================
+//=========================== pin enable start ===========================
 //========================================================================
-void pinSetup(){
+void pinEnable(){
 //****************************** connection ******************************
     pinMode(CONNECT_PIN, INPUT);
 //****************************** ultrosonic ******************************
@@ -190,9 +198,11 @@ void pinSetup(){
 //********************************* vive *********************************
     pinMode(VIVE_PIN_1,INPUT); 
     pinMode(VIVE_PIN_2,INPUT); 
+//********************************* servo *********************************
+    PWMSetup(); 
 }
 //========================================================================
-//============================ pin setup end =============================
+//============================ pin enable end ============================
 //========================================================================
 
 
@@ -211,6 +221,8 @@ void pinDisable(){
     pinMode(BACK_IDIR_PIN,INPUT);
     pinMode(BACK_LEFT_EN_PIN,INPUT);
     pinMode(BACK_RIGHT_EN_PIN,INPUT);
+//********************************* servo *********************************
+    pinMode(ORIENT_SERVO_PIN, INPUT);
 //********************************* vive *********************************
     pinMode(VIVE_PIN_1,INPUT); 
     pinMode(VIVE_PIN_2,INPUT); 
@@ -347,6 +359,85 @@ void ultraDetect(){
 }
 //========================================================================
 //========================= distance detect end ==========================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//========================= vive receive start ===========================
+//========================================================================
+void viveReceive(){
+//********************************* vive 1 *******************************  
+    if (vive_rise_flag_1) {
+        vive_rise_flag_1 = false;
+        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_1));
+        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_1), viveFall_1, FALLING);
+    } else if (vive_fall_flag_1){
+        vive_fall_flag_1 = false;
+        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_1));
+        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_1), viveRise_1, RISING);
+        
+        bandwidth_1 = micros() - signal_start_1;
+
+        if (bandwidth_1 > 60 && bandwidth_1 < 2000) {
+            sync_cnt_1++;
+            sync_end_1 = micros();
+        }
+        else if (bandwidth_1 < 60 && bandwidth_1 > 10) {
+            if (sync_cnt_1 == 3) {
+                is_x_found_1 = true;
+                x_coor_1 = micros() - sync_end_1;
+            } else if (sync_cnt_1 == 1) {
+                is_y_found_1 = true;
+                y_coor_1 = micros() - sync_end_1;
+            }
+            sync_cnt_1 = 0;
+        }
+    }
+  
+    if (is_x_found_1 && is_y_found_1) {
+        vive_display_1 = true;
+        is_x_found_1 = false;
+        is_y_found_1 = false;
+    }
+//********************************* vive 2 *******************************  
+    if (vive_rise_flag_2) {
+        vive_rise_flag_2 = false;
+        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_2));
+        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_2), viveFall_2, FALLING);
+    } else if (vive_fall_flag_2){
+        vive_fall_flag_2 = false;
+        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_2));
+        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_2), viveRise_2, RISING);
+        
+        bandwidth_2 = micros() - signal_start_2;
+
+        if (bandwidth_2 > 60 && bandwidth_2 < 2000) {
+            sync_cnt_2++;
+            sync_end_2 = micros();
+        }
+        else if (bandwidth_2 < 60 && bandwidth_2 > 10) {
+            if (sync_cnt_2 == 3) {
+                is_x_found_2 = true;
+                x_coor_2 = micros() - sync_end_2;
+            } else if (sync_cnt_2 == 1) {
+                is_y_found_2 = true;
+                y_coor_2 = micros() - sync_end_2;
+            }
+            sync_cnt_2 = 0;
+        }
+    }
+  
+    if (is_x_found_2 && is_y_found_2) {
+        vive_display_2 = true;
+        is_x_found_2 = false;
+        is_y_found_2 = false;
+    }
+}
+//========================================================================
+//========================== vive receive end ============================
 //========================================================================
 
 
@@ -492,13 +583,14 @@ void adjustYPosition(){
 void toDestination(){
     if((abs(x_car - AIM_X) > X_APPROACH_THRESH) || (abs(y_car - AIM_Y) > Y_APPROACH_THRESH) ) {
       adjustXPosition();
-    }
-    if((abs(dx) < X_ADJUST_THRESH) && abs(x_car - AIM_X)> X_APPROACH_THRESH) forwards();
-    if((abs(dy) > Y_ADJUST_THRESH)){
+    }else if((abs(dx) < X_ADJUST_THRESH) && abs(x_car - AIM_X)> X_APPROACH_THRESH){
+      forwards();
+    }else if((abs(dy) > Y_ADJUST_THRESH)){
       if(((AIM_Y -y_car) * dx)> 0) turnLeft();
       else if (((AIM_Y -y_car) * dx)< 0) turnRight();
+    }else if((abs(dy) < Y_ADJUST_THRESH) && abs(y_car - AIM_Y)> Y_APPROACH_THRESH){
+      forwards();
     }
-    if((abs(dy) < Y_ADJUST_THRESH) && abs(y_car - AIM_Y)> Y_APPROACH_THRESH) forwards();
 }
 //========================================================================
 //========================== to destination end=========================
@@ -560,83 +652,18 @@ void backMotorControl(){
 
 
 
-
-
 //========================================================================
-//========================= vive receive start ===========================
+//============================== rush start ==============================
 //========================================================================
-void viveReceive(){
-//********************************* vive 1 *******************************  
-    if (vive_rise_flag_1) {
-        vive_rise_flag_1 = false;
-        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_1));
-        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_1), viveFall_1, FALLING);
-    } else if (vive_fall_flag_1){
-        vive_fall_flag_1 = false;
-        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_1));
-        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_1), viveRise_1, RISING);
-        
-        bandwidth_1 = micros() - signal_start_1;
+void rush(){
 
-        if (bandwidth_1 > 60 && bandwidth_1 < 2000) {
-            sync_cnt_1++;
-            sync_end_1 = micros();
-        }
-        else if (bandwidth_1 < 60 && bandwidth_1 > 10) {
-            if (sync_cnt_1 == 3) {
-                is_x_found_1 = true;
-                x_coor_1 = micros() - sync_end_1;
-            } else if (sync_cnt_1 == 1) {
-                is_y_found_1 = true;
-                y_coor_1 = micros() - sync_end_1;
-            }
-            sync_cnt_1 = 0;
-        }
-    }
-  
-    if (is_x_found_1 && is_y_found_1) {
-        vive_display_1 = true;
-        is_x_found_1 = false;
-        is_y_found_1 = false;
-    }
-//********************************* vive 2 *******************************  
-    if (vive_rise_flag_2) {
-        vive_rise_flag_2 = false;
-        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_2));
-        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_2), viveFall_2, FALLING);
-    } else if (vive_fall_flag_2){
-        vive_fall_flag_2 = false;
-        detachInterrupt(digitalPinToInterrupt(VIVE_PIN_2));
-        attachInterrupt(digitalPinToInterrupt(VIVE_PIN_2), viveRise_2, RISING);
-        
-        bandwidth_2 = micros() - signal_start_2;
-
-        if (bandwidth_2 > 60 && bandwidth_2 < 2000) {
-            sync_cnt_2++;
-            sync_end_2 = micros();
-        }
-        else if (bandwidth_2 < 60 && bandwidth_2 > 10) {
-            if (sync_cnt_2 == 3) {
-                is_x_found_2 = true;
-                x_coor_2 = micros() - sync_end_2;
-            } else if (sync_cnt_2 == 1) {
-                is_y_found_2 = true;
-                y_coor_2 = micros() - sync_end_2;
-            }
-            sync_cnt_2 = 0;
-        }
-    }
-  
-    if (is_x_found_2 && is_y_found_2) {
-        vive_display_2 = true;
-        is_x_found_2 = false;
-        is_y_found_2 = false;
+    if((abs(x_car - AIM_X) < X_APPROACH_THRESH) && (abs(y_car - AIM_Y) < Y_APPROACH_THRESH) && abs(dx < X_ADJUST_THRESH)){
+      forwards();
     }
 }
 //========================================================================
-//========================== vive receive end ============================
+//============================= rush end =================================
 //========================================================================
-
 
 
 
