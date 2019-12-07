@@ -23,14 +23,15 @@
 #define    BACK_LEFT_CHANNEL        2
 #define    BACK_RIGHT_CHANNEL       3
 #define    MOTOR_ZERO_SPEED         119
-
-
+//******************************** autonomy ******************************
 #define    AIM_X                    3500
 #define    AIM_Y                    5000
 #define    X_ADJUST_THRESH          200
 #define    Y_ADJUST_THRESH          200
 #define    X_APPROACH_THRESH        200
 #define    Y_APPROACH_THRESH        200
+#define    BACK_TIME                300000
+#define    TURN_TIME                300000
 //========================================================================
 //======================= constant definition end ========================
 //========================================================================
@@ -69,6 +70,7 @@ int back_dir = 0;
 bool front_standby = true, back_standby = true;
 //******************************* autonomy *******************************
 int spin_dir = MIDDLE, last_spin_dir = MIDDLE;
+int spin_mode = 0;
 long spin_start = 0;
 
 long front_vive_x = 0, front_vive_y = 0, back_vive_x = 0, back_vive_y = 0;
@@ -324,16 +326,23 @@ void toDestination(){
 //============================== spin start ==============================
 //========================================================================
 void spin(){ 
-    //if( !=   
-    int spin_start_time = micros();
-     
     if(spin_dir != MIDDLE && last_spin_dir == MIDDLE){
-        
+        spin_start = micros();
+        spin_mode = 1;
+        backwards();
     }
-//    if(left_spin){
-        
+    if(micros() - spin_start > BACK_TIME && spin_mode == 1){
+        spin_start = micros();
+        spin_mode = 2;
+        if(spin_dir == LEFT) turnLeft();
+        else if(spin_dir == RIGHT) turnRight();
+        spin_mode == 2;
     }
-
+    if(micros - spin_start > TURN_TIME && spin_mode == 2){
+        forwards();
+        spin_mode = 0;
+    }
+}
 //========================================================================
 //=============================== spin end ===============================
 //========================================================================
