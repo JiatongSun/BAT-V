@@ -43,10 +43,10 @@
 //========================= pin definition start =========================
 //========================================================================
 //********************************* servo ********************************
-#define    ORIENT_SERVO_PIN        23
+#define    ORIENT_SERVO_PIN        27
 //********************************* motor ********************************
-#define    BACK_LEFT_EN_PIN        25
-#define    BACK_RIGHT_EN_PIN       26
+#define    BACK_LEFT_EN_PIN        17
+#define    BACK_RIGHT_EN_PIN       16
 #define    BACK_DIR_PIN            32
 #define    BACK_IDIR_PIN           33
 //========================================================================
