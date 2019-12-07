@@ -1,7 +1,7 @@
-#define    TRIGGER_PIN             23
-#define    ECHO_PIN                22
+#define    TRIGGER_PIN             32
+#define    ECHO_PIN                33
 
-long distance = 0;
+float distance = 0;
 long duration = 0;
 
 void setup(){
@@ -12,7 +12,6 @@ void setup(){
 
 void loop(){
     ultraDectect();
-    show();
 }
 
 void ultraDectect(){
@@ -25,16 +24,11 @@ void ultraDectect(){
     digitalWrite(TRIGGER_PIN,LOW);
     duration = pulseIn(ECHO_PIN,HIGH);
     distance = (duration/2)*0.0343;
-}
-
-void show(){
-    if(millis() % 500 == 0){
-        Serial.print("Distance: ");
-        if(distance>=400 || distance<=2){
-            Serial.println("Out of range!");
-        } else {
-            Serial.print(distance);
-            Serial.println(" cm");
-        }
+    Serial.print("Distance: ");
+    if(distance>=400 || distance<=2){
+        Serial.println("Out of range!");
+    } else {
+        Serial.print(distance);
+        Serial.println(" cm");
     }
 }
