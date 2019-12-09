@@ -3,7 +3,6 @@
 #include <pgmspace.h>
 
 #include "audio_example_file.h"
-//#include "soundsample.h"
 
 //i2s configuration
 int i2s_num = 0; // i2s port number
@@ -60,6 +59,5 @@ void setup() {
   playPROGMEMsample(audio_table);
 }
 void loop() {
-
-
+//  if(millis()%3000 == 0)playPROGMEMsample(audio_table);
 }

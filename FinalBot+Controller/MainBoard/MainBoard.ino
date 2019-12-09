@@ -30,16 +30,16 @@
 #define    CLOCKWISE                1  
 #define    COUNTERCLOCKWISE         -1  
 #define    STANDBY                  0
-#define    AUTONOMOUS               0
-#define    MANUAL                   1
+#define    AUTONOMOUS               1
+#define    MANUAL                   0
 //********************************* servo *******************************
 #define    SERVO_RESOLUTION_BITS    13
 #define    SERVO_RESOLUTION         8191
 #define    SERVO_FREQ_HZ            50
 #define    ORIENT_CHANNEL           0
 #define    WEAPON_CHANNEL           1
-#define    ORIENT_MIN_ANGLE         300
-#define    ORIENT_MAX_ANGLE         450
+#define    ORIENT_MIN_ANGLE         350
+#define    ORIENT_MAX_ANGLE         400
 #define    WEAPON_MIN_ANGLE         200
 #define    WEAPON_MID_ANGLE         600
 #define    WEAPON_MAX_ANGLE         1000
@@ -96,7 +96,7 @@
 //================== global variables definition start ===================
 //========================================================================
 //********************************* mode *********************************
-bool cur_mode = MANUAL;
+bool cur_mode = MANUAL, last_mode = MANUAL;
 //********************************* timer ********************************
 hw_timer_t* timer_1 = NULL;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
@@ -108,19 +108,24 @@ unsigned int UDPlocalPort = 2816, UDPtargetPort = 2918;
 const int packetSize = 100; 
 byte receive_buffer[packetSize];
 int VRX = 0, VRY = 0, PTM = 0, SW_1 = 0, SW_2 = 0;
+int last_VRX = 0, last_VRY = 0, last_PTM = 0, last_SW_2 = 0;
 //****************************** ultrosonic ******************************
 long distance = 0;
 long duration = 0;
 //********************************* servo ********************************
+bool is_new_orient = false;
 int orient_pos = ORIENT_MIN_ANGLE;
 int orient_dir = CLOCKWISE;
+bool is_new_weapon = false;
 int weapon_pos = WEAPON_MIN_ANGLE;
 int weapon_dir = CLOCKWISE;
 bool weapon_mode = MANUAL;
 bool weapon_auto = false;
 //********************************* motor ********************************
+bool is_new_speed = false;
 double back_left_speed = 0, back_right_speed = 0;
 int back_dir = 0;
+bool is_new_front = false;
 bool front_standby = true, back_standby = true;
 //******************************** encoder *******************************
 bool left_encoder_state = false, last_left_encoder_state = false;
@@ -351,8 +356,8 @@ FASTLED_USING_NAMESPACE
 
 // ===== GAME VARIABLES =====
 // change ROBOTNUM (1-4) and TEAMCOLOR (BLUE or RED) as necessary
-#define ROBOTNUM    1               // robot number on meta team (1-4)
-#define TEAMCOLOR   BLUE            // color for the robot team, either RED or BLUE
+#define ROBOTNUM    4               // robot number on meta team (1-4)
+#define TEAMCOLOR   RED            // color for the robot team, either RED or BLUE
 // ==========================
 
 #define NEO_LED_PIN 17              // pin attached to LED ring
@@ -511,6 +516,64 @@ void pinSetup(){
 
 
 
+
+//========================================================================
+//=========================== pin enable start ===========================
+//========================================================================
+void pinEnable(){
+    pinMode(BACK_DIR_PIN,OUTPUT);
+    pinMode(BACK_IDIR_PIN,OUTPUT);
+    pinMode(FRONT_DIR_PIN,OUTPUT);
+    PWMSetup(); 
+}
+//========================================================================
+//============================ pin enable end ============================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//=========================== pin disable start ==========================
+//========================================================================
+void pinDisable(){
+//********************************* motor ********************************
+    pinMode(BACK_DIR_PIN,INPUT);
+    pinMode(BACK_IDIR_PIN,INPUT);
+    pinMode(BACK_LEFT_EN_PIN,INPUT);
+    pinMode(BACK_RIGHT_EN_PIN,INPUT);
+    pinMode(FRONT_DIR_PIN,INPUT);
+//********************************* servo *********************************
+    pinMode(ORIENT_SERVO_PIN, INPUT);
+}
+//========================================================================
+//============================ pin disable end ===========================
+//========================================================================
+
+
+
+
+
+//========================================================================
+//======================== check pin setup start  ========================
+//========================================================================
+void checkPinSetup(){
+      if(last_mode == AUTONOMOUS && cur_mode == MANUAL){
+          pinEnable();
+      }else if(last_mode == MANUAL && cur_mode == AUTONOMOUS){
+          pinDisable();
+      }
+      last_mode = cur_mode;
+}
+//========================================================================
+//========================= check pin setup end  =========================
+//========================================================================
+
+
+
+
+
 //========================================================================
 //=========================== PWM setup start ============================
 //========================================================================
@@ -558,7 +621,7 @@ void IRAM_ATTR onTimer(){
 void timerSetup(){
     timer_1 = timerBegin(1, 80, true);
     timerAttachInterrupt(timer_1, &onTimer, true);
-    timerAlarmWrite(timer_1, 1000, true); 
+    timerAlarmWrite(timer_1, 500, true); 
     timerAlarmEnable(timer_1);       
 }
 //========================================================================
@@ -656,6 +719,11 @@ void UDPreceiveData(){
         SW_1 = receive_buffer[3];
         SW_2 = receive_buffer[4];
 
+        if(VRX!=last_VRX)is_new_speed = true;
+        if(VRY!=last_VRY)is_new_orient = true;
+        if(PTM!=last_PTM)is_new_weapon = true;
+        if(SW_2!=last_SW_2)is_new_front = true;
+
         back_left_speed = abs(VRX - MOTOR_ZERO_SPEED);
         if(VRX > MOTOR_ZERO_SPEED) {
             back_dir = CLOCKWISE;
@@ -678,6 +746,11 @@ void UDPreceiveData(){
         
         if(SW_2 == 1)front_standby = false;
         else front_standby = true;
+
+        last_VRX = VRX;
+        last_VRY = VRY;
+        last_PTM = PTM;
+        last_SW_2 = SW_2;
     }
 }
 //========================================================================
@@ -706,8 +779,8 @@ void orientServoControl(){
 //====================== weapon servo control start ======================
 //========================================================================
 void weaponServoControl(){
-    weaponAutoControl();
-    weaponManualControl();
+    if(weapon_mode == AUTONOMOUS) weaponAutoControl(); 
+    else if(weapon_mode == MANUAL) weaponManualControl();
 }
 //========================================================================
 //====================== weapon servo control end ========================
@@ -723,20 +796,18 @@ void weaponServoControl(){
 void weaponAutoControl(){
     if(weapon_auto){
         weapon_auto = false;
-        if(weapon_mode == AUTONOMOUS){
-            int max_pos = map(PTM, 1, 255, (WEAPON_MIN_ANGLE + (WEAPON_MAX_ANGLE - WEAPON_MIN_ANGLE) / 3), WEAPON_MAX_ANGLE);
-            int front_angle = WEAPON_MAX_ANGLE - (WEAPON_MAX_ANGLE - WEAPON_MIN_ANGLE) / 3;
-            int angle_max = front_angle + abs(max_pos - front_angle);
-            int angle_min = front_angle - abs(max_pos - front_angle);
+        int max_pos = map(PTM, 1, 255, (WEAPON_MIN_ANGLE + (WEAPON_MAX_ANGLE - WEAPON_MIN_ANGLE) / 3), WEAPON_MAX_ANGLE);
+        int front_angle = WEAPON_MAX_ANGLE - (WEAPON_MAX_ANGLE - WEAPON_MIN_ANGLE) / 3;
+        int angle_max = front_angle + abs(max_pos - front_angle);
+        int angle_min = front_angle - abs(max_pos - front_angle);
 
-            if(weapon_pos < angle_min || weapon_pos > angle_max){
-                weapon_pos = front_angle;
-            }
-            ledcWrite(WEAPON_CHANNEL,weapon_pos);
-            weapon_pos += weapon_dir;
-            if(weapon_pos == angle_max || weapon_pos == angle_min){
-                weapon_dir = -weapon_dir;
-            }
+        if(weapon_pos < angle_min || weapon_pos > angle_max){
+            weapon_pos = front_angle;
+        }
+        ledcWrite(WEAPON_CHANNEL,weapon_pos);
+        weapon_pos += weapon_dir;
+        if(weapon_pos == angle_max || weapon_pos == angle_min){
+            weapon_dir = -weapon_dir;
         }
     }
 }
@@ -752,7 +823,8 @@ void weaponAutoControl(){
 //===================== weapon manual control start ======================
 //========================================================================
 void weaponManualControl(){
-    if(weapon_mode == MANUAL){
+    if(is_new_weapon){
+        is_new_weapon = false;\
         weapon_pos = map(PTM, 1, 255, WEAPON_MIN_ANGLE, WEAPON_MAX_ANGLE);
         ledcWrite(WEAPON_CHANNEL,weapon_pos);
     }
@@ -780,8 +852,11 @@ void backMotorControl(){
         digitalWrite(BACK_DIR_PIN,LOW);
         digitalWrite(BACK_IDIR_PIN,LOW);      
     }
-    ledcWrite(BACK_LEFT_CHANNEL,back_left_speed);
-    ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed);  
+    if(is_new_speed){
+        is_new_speed = false;
+        ledcWrite(BACK_LEFT_CHANNEL,back_left_speed * 3 / 4);
+        ledcWrite(BACK_RIGHT_CHANNEL,back_right_speed * 3 / 4); 
+    } 
 }
 //========================================================================
 //======================= back motor control end =========================
@@ -1047,26 +1122,32 @@ void loop()
     // ========================== LED end ==============================
 
     // ===================== own function start ========================
-    digitalWrite(CONNECT_PIN, autoMode);
     preset();
     if(!gameStatus) return;
     if(health == 0) return;
-    if(autoMode) return;
+    if(autoMode) {cur_mode = AUTONOMOUS;
+    else cur_mode = MANUAL;
+    digitalWrite(CONNECT_PIN, autoMode);
+    checkPinSetup();
+    if(autoMode){
+        PTM = 800;
+        weaponAutoControl();
+    }
+    else{
+        WiFi_Reconnect();
+        UDPreceiveData();
+        
+        orientServoControl();
+        weaponServoControl();
     
-    WiFi_Reconnect();
-    UDPreceiveData();
+        pidControl();
+        encoderCalc();
     
-    orientServoControl();
-    weaponServoControl();
-
-    pidControl();
-    encoderCalc();
-
-    backMotorControl();
-    frontMotorControl();  
-    
-    show();
-    
+        backMotorControl();
+        frontMotorControl();  
+        
+        show();
+    }
     // ====================== own function end =========================
 }
 // =====================================================================

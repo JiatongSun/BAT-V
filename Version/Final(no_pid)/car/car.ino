@@ -68,9 +68,9 @@
 //========================================================================
 //****************************** ultrosonic ******************************
 #define    TRIGGER_PIN             19
-#define    ECHO_PIN                18
+#define    ECHO_PIN                23
 //********************************* servo ********************************
-#define    ORIENT_SERVO_PIN        23
+#define    ORIENT_SERVO_PIN        18
 #define    WEAPON_SERVO_PIN        22
 //********************************* motor ********************************
 #define    BACK_LEFT_EN_PIN        25
