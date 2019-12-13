@@ -41,7 +41,7 @@ void loop() {
         attachInterrupt(digitalPinToInterrupt(VIVE_PIN), riseReceived, RISING);
         
         bandwidth = micros() - signal_start;
-//        Serial.print  ln(bandwidth);
+        Serial.println(bandwidth);
 
         if (bandwidth > 60 && bandwidth < 2000) {
             sync_cnt++;

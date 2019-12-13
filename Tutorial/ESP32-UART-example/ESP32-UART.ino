@@ -10,29 +10,24 @@
  */
 #define RXD2 16
 #define TXD2 17
-
-char send_buffer[3] = {0,127,255};
-
+ 
 void setup() {
   Serial.begin(115200);
   //  Serial2.begin(baud-rate, protocol, RX pin, TX pin);
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
 }
+
+uint8_t send_data = 0;
  
 void loop() { 
   while (Serial2.available()) { // read any incoming and write it to the monitor
-      Serial.print("\nESP32 read: ");
-      Serial.print(byte(Serial2.read()));
-      Serial.print(" ");
+    Serial.print(char(Serial2.read()));
   }
-  if (millis()%1000==1){  
-    Serial.print("\nESP32 write: ");
-    for(int i=0; i<3; ++i){
-        Serial2.print(send_buffer[i]); 
-        Serial.print(byte(send_buffer[i]));
-        Serial.print(" ");
-        send_buffer[i]++;
-    }
+
+  // to help debug write an increasing number to serial2 once per second
+  if (millis()%1000==1){   
+    Serial2.println(send_data++);
+    Serial.printf("ESP32 write %d\n",send_data);
     delay(1);
   }
 }
